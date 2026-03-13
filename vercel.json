@@ -8,29 +8,35 @@
     {
       "src": "frontend/package.json",
       "use": "@vercel/static-build",
-      "config": { "distDir": "dist" }
+      "config": {
+        "distDir": "dist"
+      }
     }
   ],
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/backend/server.js"
+      "destination": "backend/server.js"
     },
     {
       "source": "/track/(.*)",
-      "destination": "/backend/server.js"
+      "destination": "backend/server.js"
     },
     {
       "source": "/import-leads",
-      "destination": "/backend/server.js"
+      "destination": "backend/server.js"
     },
     {
       "source": "/health",
-      "destination": "/backend/server.js"
+      "destination": "backend/server.js"
     },
     {
       "source": "/(.*)",
-      "destination": "/$1"
+      "destination": "/frontend/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/frontend/index.html"
     }
   ]
 }
