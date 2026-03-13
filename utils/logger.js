@@ -21,34 +21,43 @@ const logFormat = printf(({ level, message, timestamp, stack }) => {
   return `${timestamp} [${level}]: ${stack || message}`;
 });
 
-const transports = [
-  // Rotating combined log
-  new winston.transports.DailyRotateFile({
-    dirname: LOG_DIR,
-    filename: 'combined-%DATE%.log',
-    datePattern: 'YYYY-MM-DD',
-    maxFiles: '14d',
-    level: LOG_LEVEL,
-    zippedArchive: true,
-  }),
-  // Rotating error log
-  new winston.transports.DailyRotateFile({
-    dirname: LOG_DIR,
-    filename: 'error-%DATE%.log',
-    datePattern: 'YYYY-MM-DD',
-    maxFiles: '30d',
-    level: 'error',
-    zippedArchive: true,
-  }),
-];
+const transports = [];
 
-// Pretty-print to console in dev
-if (process.env.NODE_ENV !== 'production') {
+// Only use file logging if NOT on Vercel (read-only filesystem)
+if (!process.env.VERCEL) {
+  transports.push(
+    new winston.transports.DailyRotateFile({
+      dirname: LOG_DIR,
+      filename: 'combined-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      maxFiles: '14d',
+      level: LOG_LEVEL,
+      zippedArchive: true,
+    })
+  );
+  transports.push(
+    new winston.transports.DailyRotateFile({
+      dirname: LOG_DIR,
+      filename: 'error-%DATE%.log',
+      datePattern: 'YYYY-MM-DD',
+      maxFiles: '30d',
+      level: 'error',
+      zippedArchive: true,
+    })
+  );
+}
+
+// Always enable console logging on Vercel or in development
+if (process.env.VERCEL || process.env.NODE_ENV !== 'production') {
   transports.push(
     new winston.transports.Console({
       format: combine(colorize(), timestamp({ format: 'HH:mm:ss' }), logFormat),
     })
   );
+} else {
+  // Production (non-Vercel) - also log to console but without colors if needed
+  // (usually winston handles console fine, but let's be explicit)
+  transports.push(new winston.transports.Console());
 }
 
 const logger = winston.createLogger({
