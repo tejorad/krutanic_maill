@@ -260,7 +260,7 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({ success: false, error: 'Campaign selection is required' });
     }
 
-    if (campaignState.getStatus(req.user.id).isRunning) {
+    if ((await campaignState.getStatus(req.user.id)).isRunning) {
       return res.status(409).json({ success: false, error: 'A campaign is already running for your account. Stop it first.' });
     }
 
@@ -275,7 +275,7 @@ router.post('/send', async (req, res) => {
     await smtpRotator.refreshPool();
 
     // Start campaign state tracking for this user
-    campaignState.start(req.user.id, campaign, leads.length);
+    await campaignState.start(req.user.id, campaign, leads.length);
 
     const userId = req.user.id;
 
@@ -284,7 +284,8 @@ router.post('/send', async (req, res) => {
       logger.info(`[api] Starting background delivery for ${leads.length} leads in "${campaign}"...`);
       for (let i = 0; i < leads.length; i++) {
         // Check if stopped by user each iteration
-        if (!campaignState.getStatus(userId).isRunning) {
+        const currentStatus = await campaignState.getStatus(userId);
+        if (!currentStatus.isRunning) {
           logger.info(`[api] Campaign "${campaign}" stopped by user ${userId} at ${i} / ${leads.length} leads.`);
           break;
         }
@@ -293,7 +294,7 @@ router.post('/send', async (req, res) => {
         try {
           const { subject, body } = templateEngine.generate(userId, lead);
           await emailService.sendEmail(lead.email, subject, body, userId);
-          campaignState.increment(userId);
+          await campaignState.increment(userId);
         } catch (err) {
           logger.error(`[api] Background send failed for ${lead.email}: ${err.message}`);
         }
@@ -305,10 +306,12 @@ router.post('/send', async (req, res) => {
       }
 
       // Mark complete if it ran to the end (not stopped)
-      if (campaignState.getStatus(userId).isRunning) {
-        campaignState.stop(userId, false);
+      const finalStatus = await campaignState.getStatus(userId);
+      if (finalStatus.isRunning) {
+        await campaignState.stop(userId, false);
       }
-      logger.info(`[api] Campaign "${campaign}" finished for user ${userId}. Sent: ${campaignState.getStatus(userId).sentCount} / ${leads.length}`);
+      const lastStatus = await campaignState.getStatus(userId);
+      logger.info(`[api] Campaign "${campaign}" finished for user ${userId}. Sent: ${lastStatus.sentCount} / ${leads.length}`);
     });
 
     res.json({ success: true, count: leads.length, message: 'Delivery started in background' });
@@ -322,12 +325,12 @@ router.post('/send', async (req, res) => {
  * POST /api/leads/stop
  * Stop the currently running campaign.
  */
-router.post('/stop', (req, res) => {
-  const status = campaignState.getStatus(req.user.id);
+router.post('/stop', async (req, res) => {
+  const status = await campaignState.getStatus(req.user.id);
   if (!status.isRunning) {
     return res.status(400).json({ success: false, error: 'No campaign is currently running.' });
   }
-  campaignState.stop(req.user.id, true);
+  await campaignState.stop(req.user.id, true);
   logger.info(`[api] Campaign "${status.campaign}" stop requested by user ${req.user.id}.`);
   res.json({ success: true, message: `Campaign "${status.campaign}" is being stopped.` });
 });
@@ -336,8 +339,8 @@ router.post('/stop', (req, res) => {
  * GET /api/leads/campaign-status
  * Returns the current campaign run state for live UI polling.
  */
-router.get('/campaign-status', (req, res) => {
-  res.json({ success: true, data: campaignState.getStatus(req.user.id) });
+router.get('/campaign-status', async (req, res) => {
+  res.json({ success: true, data: await campaignState.getStatus(req.user.id) });
 });
 
 module.exports = router;
