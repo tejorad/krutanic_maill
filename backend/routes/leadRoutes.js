@@ -325,22 +325,30 @@ router.post('/send', async (req, res) => {
  * POST /api/leads/stop
  * Stop the currently running campaign.
  */
-router.post('/stop', async (req, res) => {
-  const status = await campaignState.getStatus(req.user.id);
-  if (!status.isRunning) {
-    return res.status(400).json({ success: false, error: 'No campaign is currently running.' });
+router.post('/stop', async (req, res, next) => {
+  try {
+    const status = await campaignState.getStatus(req.user.id);
+    if (!status.isRunning) {
+      return res.status(400).json({ success: false, error: 'No campaign is currently running.' });
+    }
+    await campaignState.stop(req.user.id, true);
+    logger.info(`[api] Campaign "${status.campaign}" stop requested by user ${req.user.id}.`);
+    res.json({ success: true, message: `Campaign "${status.campaign}" is being stopped.` });
+  } catch (err) {
+    next(err);
   }
-  await campaignState.stop(req.user.id, true);
-  logger.info(`[api] Campaign "${status.campaign}" stop requested by user ${req.user.id}.`);
-  res.json({ success: true, message: `Campaign "${status.campaign}" is being stopped.` });
 });
 
 /**
  * GET /api/leads/campaign-status
  * Returns the current campaign run state for live UI polling.
  */
-router.get('/campaign-status', async (req, res) => {
-  res.json({ success: true, data: await campaignState.getStatus(req.user.id) });
+router.get('/campaign-status', async (req, res, next) => {
+  try {
+    res.json({ success: true, data: await campaignState.getStatus(req.user.id) });
+  } catch (err) {
+    next(err);
+  }
 });
 
 module.exports = router;
