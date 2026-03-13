@@ -282,36 +282,44 @@ router.post('/send', async (req, res) => {
     // Trigger sending in the background (Non-blocking)
     process.nextTick(async () => {
       logger.info(`[api] Starting background delivery for ${leads.length} leads in "${campaign}"...`);
-      for (let i = 0; i < leads.length; i++) {
-        // Check if stopped by user each iteration
-        const currentStatus = await campaignState.getStatus(userId);
-        if (!currentStatus.isRunning) {
-          logger.info(`[api] Campaign "${campaign}" stopped by user ${userId} at ${i} / ${leads.length} leads.`);
+      
+      const BATCH_SIZE = 5; // Send 5 emails concurrently
+      const DELAY_MS = 1000; // 1 second delay between batches (5 emails/sec avg)
+
+      for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+        // 1. Check if stopped by user
+        const status = await campaignState.getStatus(userId);
+        if (!status || !status.isRunning) {
+          logger.info(`[api] Campaign "${campaign}" stopped by user ${userId}.`);
           break;
         }
 
-        const lead = leads[i];
-        try {
-          const { subject, body } = templateEngine.generate(userId, lead);
-          await emailService.sendEmail(lead.email, subject, body, userId);
-          await campaignState.increment(userId);
-        } catch (err) {
-          logger.error(`[api] Background send failed for ${lead.email}: ${err.message}`);
-        }
+        // 2. Prepare batch
+        const batchLeads = leads.slice(i, i + BATCH_SIZE);
         
-        // 200ms delay = 5 emails per second
-        if (i < leads.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 200));
+        // 3. Process batch in parallel
+        await Promise.all(batchLeads.map(async (lead) => {
+          try {
+            const { subject, body } = templateEngine.generate(userId, lead);
+            await emailService.sendEmail(lead.email, subject, body, userId);
+            await campaignState.increment(userId);
+          } catch (err) {
+            logger.error(`[api] Send failed for ${lead.email}: ${err.message}`);
+          }
+        }));
+
+        // 4. Batch throttling delay
+        if (i + BATCH_SIZE < leads.length) {
+          await new Promise(resolve => setTimeout(resolve, DELAY_MS));
         }
       }
 
       // Mark complete if it ran to the end (not stopped)
       const finalStatus = await campaignState.getStatus(userId);
-      if (finalStatus.isRunning) {
+      if (finalStatus && finalStatus.isRunning) {
         await campaignState.stop(userId, false);
       }
-      const lastStatus = await campaignState.getStatus(userId);
-      logger.info(`[api] Campaign "${campaign}" finished for user ${userId}. Sent: ${lastStatus.sentCount} / ${leads.length}`);
+      logger.info(`[api] Campaign "${campaign}" finished for user ${userId}.`);
     });
 
     res.json({ success: true, count: leads.length, message: 'Delivery started in background' });
