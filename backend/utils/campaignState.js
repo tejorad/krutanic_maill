@@ -4,22 +4,16 @@
  * campaignState.js
  * ----------------
  * Multi-user campaign state manager.
- * Tracks concurrent campaigns for different users using Redis.
+ * Tracks concurrent campaigns for different users using MongoDB.
  */
-const redis = require('../config/redis');
+const User = require('../models/User');
 const logger = require('./logger');
-
-const STATE_PREFIX = 'campaign_state:';
 
 async function getOrCreateState(userId) {
   try {
-    const data = await redis.get(`${STATE_PREFIX}${userId}`);
-    if (data) {
-      const state = JSON.parse(data);
-      // Ensure date objects are correctly parsed back
-      if (state.startedAt) state.startedAt = new Date(state.startedAt);
-      if (state.completedAt) state.completedAt = new Date(state.completedAt);
-      return state;
+    const user = await User.findById(userId).select('activeCampaign');
+    if (user && user.activeCampaign) {
+      return user.activeCampaign;
     }
   } catch (err) {
     logger.error(`[campaignState] Get error for ${userId}: ${err.message}`);
@@ -36,39 +30,48 @@ async function getOrCreateState(userId) {
   };
 }
 
-async function saveState(userId, state) {
+async function start(userId, campaignName, totalLeads) {
   try {
-    await redis.set(`${STATE_PREFIX}${userId}`, JSON.stringify(state), 'EX', 86400); // 24h expiry
+    await User.findByIdAndUpdate(userId, {
+      $set: {
+        activeCampaign: {
+          isRunning: true,
+          campaign: campaignName,
+          startedAt: new Date(),
+          totalLeads: totalLeads,
+          sentCount: 0,
+          stoppedByUser: false,
+          completedAt: null,
+        }
+      }
+    });
   } catch (err) {
-    logger.error(`[campaignState] Save error for ${userId}: ${err.message}`);
+    logger.error(`[campaignState] Start error for ${userId}: ${err.message}`);
   }
 }
 
-async function start(userId, campaignName, totalLeads) {
-  const state = {
-    isRunning: true,
-    campaign: campaignName,
-    startedAt: new Date(),
-    totalLeads: totalLeads,
-    sentCount: 0,
-    stoppedByUser: false,
-    completedAt: null,
-  };
-  await saveState(userId, state);
-}
-
 async function stop(userId, byUser = true) {
-  const state = await getOrCreateState(userId);
-  state.isRunning = false;
-  state.stoppedByUser = byUser;
-  state.completedAt = new Date();
-  await saveState(userId, state);
+  try {
+    await User.findByIdAndUpdate(userId, {
+      $set: {
+        'activeCampaign.isRunning': false,
+        'activeCampaign.stoppedByUser': byUser,
+        'activeCampaign.completedAt': new Date(),
+      }
+    });
+  } catch (err) {
+    logger.error(`[campaignState] Stop error for ${userId}: ${err.message}`);
+  }
 }
 
 async function increment(userId) {
-  const state = await getOrCreateState(userId);
-  state.sentCount += 1;
-  await saveState(userId, state);
+  try {
+    await User.findByIdAndUpdate(userId, {
+      $inc: { 'activeCampaign.sentCount': 1 }
+    });
+  } catch (err) {
+    logger.error(`[campaignState] Increment error for ${userId}: ${err.message}`);
+  }
 }
 
 async function getStatus(userId) {
