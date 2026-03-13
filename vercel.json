@@ -2,11 +2,11 @@
   "version": 2,
   "builds": [
     {
-      "src": "server.js",
+      "src": "backend/server.js",
       "use": "@vercel/node"
     },
     {
-      "src": "client/package.json",
+      "src": "frontend/package.json",
       "use": "@vercel/static-build",
       "config": { "distDir": "dist" }
     }
@@ -14,27 +14,28 @@
   "rewrites": [
     {
       "source": "/api/(.*)",
-      "destination": "/server.js"
+      "destination": "/backend/server.js"
     },
     {
       "source": "/track/(.*)",
-      "destination": "/server.js"
+      "destination": "/backend/server.js"
     },
     {
       "source": "/import-leads",
-      "destination": "/server.js"
+      "destination": "/backend/server.js"
     },
     {
       "source": "/health",
-      "destination": "/server.js"
+      "destination": "/backend/server.js"
     },
     {
       "source": "/(.*)",
-      "destination": "/client/$1"
+      "destination": "/frontend/$1",
+      "continue": true
     },
     {
       "source": "/(.*)",
-      "destination": "/client/index.html"
+      "destination": "/frontend/index.html"
     }
   ]
 }
