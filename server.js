@@ -58,15 +58,31 @@ app.use((err, _req, res, _next) => {
 });
 
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
-(async () => {
-  await connectDB();
-  await smtpRotator.refreshPool(); // Initialize SMTP transporters
-  await templateEngine.refresh(); // Initialize email templates
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`\n🚀  SERVER READY → http://localhost:${PORT}`);
-    logger.info(`🚀  API running → http://localhost:${PORT}`);
-    logger.info(`   Env   : ${process.env.NODE_ENV || 'development'}`);
+const initialize = async () => {
+  try {
+    await connectDB();
+    await smtpRotator.refreshPool(); // Initialize SMTP transporters
+    await templateEngine.refresh(); // Initialize email templates
+    logger.info('🚀 Systems initialized');
+  } catch (err) {
+    logger.error(`Critical startup error: ${err.message}`);
+    // On Vercel, we might not want to exit(1) immediately to allow logs to be sent
+    if (!process.env.VERCEL) process.exit(1);
+  }
+};
+
+// Only run listener if NOT on Vercel
+if (!process.env.VERCEL) {
+  initialize().then(() => {
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`\n🚀  SERVER READY → http://localhost:${PORT}`);
+      logger.info(`🚀  API running → http://localhost:${PORT}`);
+    });
   });
-})();
+} else {
+  // On Vercel, we perform a "soft" initialization
+  // Note: Vercel functions are stateless; this runs once per cold start
+  initialize().catch(err => logger.error(`Vercel startup error: ${err.message}`));
+}
 
 module.exports = app;

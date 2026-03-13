@@ -16,6 +16,10 @@ const redisClient = new Redis({
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
   retryStrategy: (times) => {
+    if (process.env.VERCEL && times > 3) {
+      logger.error('Redis connection failed after 3 attempts on Vercel. Disabling Redis.');
+      return null; // Stop retrying
+    }
     const delay = Math.min(times * 100, 3000);
     logger.warn(`Redis reconnecting... attempt #${times}`);
     return delay;
