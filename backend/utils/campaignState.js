@@ -74,6 +74,16 @@ async function increment(userId) {
   }
 }
 
+async function batchIncrement(userId, count) {
+  try {
+    await User.findByIdAndUpdate(userId, {
+      $inc: { 'activeCampaign.sentCount': count }
+    });
+  } catch (err) {
+    logger.error(`[campaignState] Batch increment error for ${userId}: ${err.message}`);
+  }
+}
+
 async function getStatus(userId) {
   const state = await getOrCreateState(userId);
   const now = Date.now();
@@ -89,4 +99,4 @@ async function getStatus(userId) {
   };
 }
 
-module.exports = { start, stop, increment, getStatus };
+module.exports = { start, stop, increment, batchIncrement, getStatus };
