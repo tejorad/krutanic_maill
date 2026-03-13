@@ -25,6 +25,10 @@
       "destination": "/server.js"
     },
     {
+      "source": "/health",
+      "destination": "/server.js"
+    },
+    {
       "source": "/(.*)",
       "destination": "/client/$1"
     },
