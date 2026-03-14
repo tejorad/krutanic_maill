@@ -31,15 +31,15 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
     // Update log with SMTP account info
     await EmailLog.findByIdAndUpdate(logId, { smtp_account: senderEmail }).catch(() => {});
 
-    // 2. Prepare body (Pure Text)
-    // Removed all HTML generation and tracking logic.
+    // 2. Prepare body (Pure Text + Click Tracking)
+    const trackedBody = wrapLinks(body, logId);
     
     // 3. Prepare email object
     let mailOptions = {
       from,
       to: recipientEmail,
       subject: subject,
-      text: body,
+      text: trackedBody,
     };
 
     // 3a. Sign with DKIM if configured
@@ -85,6 +85,35 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
     
     throw err;
   }
+}
+
+/**
+ * Helper to wrap URLs in plain text with tracking redirects
+ */
+function wrapLinks(text, logId) {
+  const baseUrl = process.env.TRACKING_BASE_URL;
+  if (!baseUrl || !logId) return text;
+
+  // Regex to find URLs (matches http:// and https://)
+  // We use a simple but effective regex for plain text
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+
+  return text.replace(urlRegex, (url) => {
+    // Skip if already a tracking link or looks like a tracking pixel
+    if (url.includes('/track/')) return url;
+    
+    // Clean trailing punctuation that might be caught in the regex (like a dot at end of sentence)
+    let cleanUrl = url;
+    const lastChar = url[url.length - 1];
+    if ([',', '.', '!', '?', ')', ']'].includes(lastChar)) {
+      cleanUrl = url.slice(0, -1);
+    }
+
+    const encodedUrl = encodeURIComponent(cleanUrl);
+    const suffix = cleanUrl !== url ? url[url.length - 1] : '';
+    
+    return `${baseUrl}/track/click?id=${logId}&url=${encodedUrl}${suffix}`;
+  });
 }
 
 /**

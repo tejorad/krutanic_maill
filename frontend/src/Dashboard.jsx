@@ -1380,9 +1380,19 @@ export default function Dashboard({ user, onLogout }) {
                       padding: '4px 10px', 
                       borderRadius: '20px', 
                       fontSize: '11px', 
-                      background: log.status === 'opened' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(100, 116, 139, 0.1)',
-                      color: log.status === 'opened' ? 'var(--success)' : 'var(--text-dim)',
-                      border: `1px solid ${log.status === 'opened' ? 'var(--success)' : 'var(--text-dim)'}22`,
+                      background: 
+                        log.status === 'clicked' ? 'rgba(59, 130, 246, 0.1)' :
+                        log.status === 'opened' ? 'rgba(16, 185, 129, 0.1)' : 
+                        'rgba(100, 116, 139, 0.1)',
+                      color: 
+                        log.status === 'clicked' ? 'var(--primary)' :
+                        log.status === 'opened' ? 'var(--success)' : 
+                        'var(--text-dim)',
+                      border: `1px solid ${
+                        log.status === 'clicked' ? 'var(--primary)' :
+                        log.status === 'opened' ? 'var(--success)' : 
+                        'var(--text-dim)'
+                      }22`,
                       textTransform: 'uppercase'
                     }}>
                       {log.status}
