@@ -31,34 +31,14 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
     // Update log with SMTP account info
     await EmailLog.findByIdAndUpdate(logId, { smtp_account: senderEmail }).catch(() => {});
 
-    // 2. Prepare body and inject tracking (Pixel + Links)
-    const isHtml = /<[a-z][\s\S]*>/i.test(body);
-    let finalHtml = isHtml ? body : `<html><body>${body.replace(/\n/g, '<br>')}</body></html>`;
+    // 2. Prepare body (Pure Text)
+    // Removed all HTML generation and tracking logic.
     
-    const baseUrl = process.env.TRACKING_BASE_URL || 'http://localhost:3000';
-    
-    // A. Click Tracking: Wrap all <a> tags
-    finalHtml = finalHtml.replace(/href="([^"]+)"/g, (match, url) => {
-      if (url.startsWith('mailto:') || url.startsWith('#')) return match;
-      const trackedUrl = `${baseUrl}/track/click?id=${logId}&url=${encodeURIComponent(url)}`;
-      return `href="${trackedUrl}"`;
-    });
-
-    // B. Open Tracking: Inject Pixel
-    const pixelTag = `<img src="${baseUrl}/track/open?id=${logId}" width="1" height="1" style="display:none;">`;
-    
-    if (finalHtml.includes('</body>')) {
-      finalHtml = finalHtml.replace('</body>', `${pixelTag}</body>`);
-    } else {
-      finalHtml += pixelTag;
-    }
-
     // 3. Prepare email object
     let mailOptions = {
       from,
       to: recipientEmail,
       subject: subject,
-      html: finalHtml,
       text: body,
     };
 

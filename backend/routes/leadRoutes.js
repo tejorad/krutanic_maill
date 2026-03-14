@@ -275,8 +275,11 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({ success: false, error: `No active leads for campaign: ${campaign}` });
     }
 
-    // Refresh SMTP pool from DB before starting
-    await smtpRotator.refreshPool();
+    // Refresh SMTP pool and Templates from DB before starting
+    await Promise.all([
+      smtpRotator.refreshPool(),
+      templateEngine.refresh(req.user.id)
+    ]);
 
     // Start campaign state tracking for this user
     await campaignState.start(req.user.id, campaign, leads.length);
@@ -287,10 +290,10 @@ router.post('/send', async (req, res) => {
     process.nextTick(async () => {
       logger.info(`[api] Starting background delivery for ${leads.length} leads in "${campaign}"...`);
       
-      const BATCH_SIZE = 10; // Send 10 emails concurrently
-      const DELAY_MS = 1000; // 1 second delay between batches (10 emails/sec avg)
+      const BATCH_DELAY_MS = 500; // 0.5 seconds between BATCHES
+      let i = 0;
 
-      for (let i = 0; i < leads.length; i += BATCH_SIZE) {
+      while (i < leads.length) {
         // 1. Check if stopped by user
         const status = await campaignState.getStatus(userId);
         if (!status || !status.isRunning) {
@@ -298,11 +301,15 @@ router.post('/send', async (req, res) => {
           break;
         }
 
-        // 2. Prepare batch
-        const batchLeads = leads.slice(i, i + BATCH_SIZE);
+        // 2. Pick a random batch size between 1 and 5
+        const currentBatchSize = Math.min(Math.floor(Math.random() * 5) + 1, leads.length - i);
+        const batchLeads = leads.slice(i, i + currentBatchSize);
+        i += currentBatchSize;
+
+        logger.debug(`[api] Sending random batch of ${currentBatchSize} emails (Progress: ${i}/${leads.length})`);
+
+        // 3. Process batch in parallel across SMTP pool
         let batchSuccessCount = 0;
-        
-        // 3. Process batch in parallel
         await Promise.all(batchLeads.map(async (lead) => {
           try {
             const { subject, body } = templateEngine.generate(userId, lead);
@@ -313,14 +320,14 @@ router.post('/send', async (req, res) => {
           }
         }));
 
-        // 4. Batch DB update (Consolidated)
+        // 4. Update counters after batch
         if (batchSuccessCount > 0) {
           await campaignState.batchIncrement(userId, batchSuccessCount);
         }
 
-        // 5. Batch throttling delay
-        if (i + BATCH_SIZE < leads.length) {
-          await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+        // 5. Throttling delay between batches
+        if (i < leads.length) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
         }
       }
 
