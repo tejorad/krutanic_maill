@@ -132,4 +132,10 @@ function getById(id, userId) {
   };
 }
 
-module.exports = { next, getById, recordFailure, resetFailures, refreshPool };
+/** Returns the count of active/healthy SMTP accounts for a user */
+function getActiveCount(userId) {
+  const uId = userId.toString();
+  return activePool(uId).length;
+}
+
+module.exports = { next, getById, getActiveCount, recordFailure, resetFailures, refreshPool };

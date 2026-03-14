@@ -290,7 +290,7 @@ router.post('/send', async (req, res) => {
     process.nextTick(async () => {
       logger.info(`[api] Starting background delivery for ${leads.length} leads in "${campaign}"...`);
       
-      const BATCH_DELAY_MS = 500; // 0.5 seconds between BATCHES
+      const BATCH_DELAY_MS = 100; // 0.1 seconds between BATCHES
       let i = 0;
 
       while (i < leads.length) {
@@ -301,8 +301,11 @@ router.post('/send', async (req, res) => {
           break;
         }
 
-        // 2. Pick a random batch size between 1 and 5
-        const currentBatchSize = Math.min(Math.floor(Math.random() * 5) + 1, leads.length - i);
+        // 2. Pick a random batch size between 1 and the number of active SMTP accounts
+        const activeCount = smtpRotator.getActiveCount(userId);
+        const maxBatchSize = activeCount > 0 ? activeCount : 5; 
+        const currentBatchSize = Math.min(Math.floor(Math.random() * maxBatchSize) + 1, leads.length - i);
+        
         const batchLeads = leads.slice(i, i + currentBatchSize);
         i += currentBatchSize;
 
