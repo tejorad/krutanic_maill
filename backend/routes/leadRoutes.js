@@ -264,6 +264,9 @@ router.post('/send', async (req, res) => {
       return res.status(409).json({ success: false, error: 'A campaign is already running for your account. Stop it first.' });
     }
 
+    // Refresh Templates from DB to ensure memory map is populated for this user
+    await templateEngine.refresh(req.user.id);
+
     if (!templateEngine.hasValidTemplates(req.user.id)) {
       return res.status(400).json({ success: false, error: 'Please configure your email templates in the Templates tab before launching a campaign.' });
     }
@@ -275,11 +278,8 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({ success: false, error: `No active leads for campaign: ${campaign}` });
     }
 
-    // Refresh SMTP pool and Templates from DB before starting
-    await Promise.all([
-      smtpRotator.refreshPool(),
-      templateEngine.refresh(req.user.id)
-    ]);
+    // Refresh SMTP pool
+    await smtpRotator.refreshPool();
 
     // Start campaign state tracking for this user
     await campaignState.start(req.user.id, campaign, leads.length);
