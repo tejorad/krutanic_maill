@@ -113,7 +113,8 @@ function resetFailures() {
  * Targeted testing usually implies the user already knows which one they want.
  */
 function getById(id, userId) {
-  const entry = pool.find(e => e.id.toString() === id.toString() && e.userId === userId);
+  const userIdStr = userId.toString();
+  const entry = pool.find(e => e.id.toString() === id.toString() && e.userId === userIdStr);
   if (!entry) return null;
   
   return {

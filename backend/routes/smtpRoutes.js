@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const SmtpAccount = require('../models/SmtpAccount');
+const smtpRotator = require('../utils/smtpRotator');
 const logger = require('../utils/logger');
 
 /**
@@ -41,6 +42,10 @@ router.post('/', async (req, res) => {
       daily_limit: daily_limit || 500,
       userId: req.user.id
     });
+    
+    // Refresh the in-memory pool so the new account is immediately available for sending
+    await smtpRotator.refreshPool();
+    
     res.status(201).json({ success: true, data: account });
   } catch (err) {
     if (err.code === 11000) {
@@ -62,6 +67,10 @@ router.patch('/:id', async (req, res) => {
       { new: true }
     );
     if (!account) return res.status(404).json({ success: false, error: 'Account not found' });
+    
+    // Refresh pool in case enabled status or credentials changed
+    await smtpRotator.refreshPool();
+    
     res.json({ success: true, data: account });
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
@@ -161,6 +170,10 @@ router.delete('/:id', async (req, res) => {
   try {
     const result = await SmtpAccount.deleteOne({ _id: req.params.id, userId: req.user.id });
     if (result.deletedCount === 0) return res.status(404).json({ success: false, error: 'Account not found' });
+    
+    // Refresh pool to remove the deleted account from memory
+    await smtpRotator.refreshPool();
+    
     res.json({ success: true, message: 'Deleted' });
   } catch (err) {
     res.status(500).json({ success: false, error: err.message });

@@ -70,6 +70,7 @@ export default function Dashboard({ user, onLogout }) {
   const [showTemplateImportModal, setShowTemplateImportModal] = useState(false);
   const [templateImportText, setTemplateImportText] = useState('');
   const [editSection, setEditSection] = useState(null); // { key, label, icon }
+  const [previewHtml, setPreviewHtml] = useState(null); // For previewing HTML templates
 
   // Campaign State
   const [campaigns, setCampaigns] = useState([]);
@@ -537,6 +538,25 @@ export default function Dashboard({ user, onLogout }) {
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* HTML Preview Modal */}
+      {previewHtml !== null && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, width: '100%', height: '100%',
+          background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(10px)',
+          zIndex: 4000, display: 'grid', placeItems: 'center'
+        }}>
+          <div className="glass-card" style={{ width: '800px', height: '80vh', display: 'flex', flexDirection: 'column', padding: 0, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid var(--border-glass)', background: 'var(--bg-glass-heavy)' }}>
+              <h2 style={{ fontSize: '18px', display: 'flex', alignItems: 'center', gap: '8px' }}><Eye size={18} /> HTML Preview</h2>
+              <button onClick={() => setPreviewHtml(null)} style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '20px' }}>✕</button>
+            </div>
+            <div style={{ flex: 1, backgroundColor: 'white', padding: '32px', overflowY: 'auto' }}>
+              <div dangerouslySetInnerHTML={{ __html: previewHtml || '<p style="color:#888;">No content to preview.</p>' }} />
             </div>
           </div>
         </div>
@@ -1207,12 +1227,22 @@ export default function Dashboard({ user, onLogout }) {
                         opacity: (item.enabled !== false) ? 1 : 0.6
                       }}
                     />
-                    <button
-                      onClick={() => removeTemplateItem(editSection.key, idx)}
-                      style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ff4d4d', cursor: 'pointer', padding: '10px', marginTop: '4px' }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '4px' }}>
+                      <button
+                        onClick={() => setPreviewHtml(typeof item === 'object' ? (item.content || '') : item)}
+                        title="Preview HTML"
+                        style={{ background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', color: 'var(--primary)', cursor: 'pointer', padding: '8px', display: 'grid', placeItems: 'center' }}
+                      >
+                        <Eye size={16} />
+                      </button>
+                      <button
+                        onClick={() => removeTemplateItem(editSection.key, idx)}
+                        title="Delete Item"
+                        style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ff4d4d', cursor: 'pointer', padding: '8px', display: 'grid', placeItems: 'center' }}
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

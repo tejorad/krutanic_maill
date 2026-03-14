@@ -264,6 +264,10 @@ router.post('/send', async (req, res) => {
       return res.status(409).json({ success: false, error: 'A campaign is already running for your account. Stop it first.' });
     }
 
+    if (!templateEngine.hasValidTemplates(req.user.id)) {
+      return res.status(400).json({ success: false, error: 'Please configure your email templates in the Templates tab before launching a campaign.' });
+    }
+
     const query = { status: 'active', campaign: campaign.toLowerCase().trim(), userId: req.user.id };
     const leads = await Lead.find(query).select('email').lean();
     
