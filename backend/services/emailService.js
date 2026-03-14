@@ -53,7 +53,8 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
     // 4. Update sent counter
     await increment();
 
-    // 5. Log success
+    // 5. Log success and mark lead as sent
+    await Lead.findOneAndUpdate({ email: recipientEmail, userId: userId }, { status: 'sent' }).catch(() => {});
     logger.info(`[emailService] SUCCESS: Sent to ${recipientEmail} [LogID: ${logId}] via ${senderEmail}`);
     
     return { success: true, messageId: info.messageId, logId };

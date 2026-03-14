@@ -97,6 +97,66 @@ export default function Dashboard({ user, onLogout }) {
     return () => clearInterval(id);
   }, [campaignStatus?.isRunning, campaignStatus?.startedAt]);
 
+  const isLoopRunning = useRef(false);
+
+  // The "Boss" loop that drives the campaign
+  const runCampaignLoop = async () => {
+    if (isLoopRunning.current) return;
+    isLoopRunning.current = true;
+
+    console.log("Starting Browser-Driven Campaign Loop...");
+    
+    try {
+      while (true) {
+        // 1. Check if stopped by user or manually
+        const statusRes = await axios.get(`${API_BASE}/api/leads/campaign-status`);
+        const status = statusRes.data?.data;
+        if (!status || !status.isRunning) {
+          console.log("Campaign stopped or finished.");
+          break;
+        }
+
+        // 2. Fetch a batch of leads
+        const batchRes = await axios.get(`${API_BASE}/api/leads/batch?campaign=${encodeURIComponent(status.campaign)}&limit=10`);
+        const batchLeads = batchRes.data?.leads || [];
+
+        if (batchLeads.length === 0) {
+          console.log("No more leads found. Marking as complete.");
+          await axios.post(`${API_BASE}/api/leads/stop`);
+          break;
+        }
+
+        // 3. Send emails in the batch
+        // We'll send them one-by-one to be super safe on Serverless
+        for (const lead of batchLeads) {
+          try {
+            await axios.post(`${API_BASE}/api/leads/send-one`, { leadId: lead._id });
+          } catch (err) {
+            console.error(`Failed to send to ${lead.email}:`, err.message);
+          }
+        }
+
+        // 4. Randomized delay between batches (0.5s to 1s)
+        const delay = Math.floor(Math.random() * 500) + 500;
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        // 5. Refresh UI stats
+        handleManualRefresh();
+      }
+    } catch (err) {
+      console.error("Campaign loop crashed:", err);
+    } finally {
+      isLoopRunning.current = false;
+    }
+  };
+
+  // Auto-resume if page is refreshed
+  useEffect(() => {
+    if (campaignStatus?.isRunning && !isLoopRunning.current) {
+      runCampaignLoop();
+    }
+  }, [campaignStatus?.isRunning]);
+
   // Format elapsed ms → 00:00:00
   const formatElapsed = (ms) => {
     if (!ms) return '00:00:00';
@@ -321,8 +381,9 @@ export default function Dashboard({ user, onLogout }) {
     setIsLaunching(true);
     try {
       const res = await axios.post(`${API_BASE}/api/leads/send`, { campaign: selectedCampaign });
-      // Trigger immediate poll state change
-      setCampaignStatus(prev => ({ ...prev, isRunning: true }));
+      // The backend initialized the state, now we start the browser engine
+      setCampaignStatus(prev => ({ ...prev, isRunning: true, campaign: selectedCampaign }));
+      runCampaignLoop();
       alert(res.data.message || 'Campaign started!');
     } catch (err) {
       alert('Launch failed: ' + (err.response?.data?.error || err.message));

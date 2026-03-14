@@ -279,72 +279,71 @@ router.post('/send', async (req, res) => {
     }
 
     // Refresh SMTP pool
-    await smtpRotator.refreshPool();
-
-    // Start campaign state tracking for this user
+    await smtpRotator.refreshPool();    // Start campaign state tracking for this user
     await campaignState.start(req.user.id, campaign, leads.length);
 
-    const userId = req.user.id;
-
-    // Trigger sending in the background (Non-blocking)
-    process.nextTick(async () => {
-      logger.info(`[api] Starting background delivery for ${leads.length} leads in "${campaign}"...`);
-      
-      const BATCH_DELAY_MS = 100; // 0.1 seconds between BATCHES
-      let i = 0;
-
-      while (i < leads.length) {
-        // 1. Check if stopped by user
-        const status = await campaignState.getStatus(userId);
-        if (!status || !status.isRunning) {
-          logger.info(`[api] Campaign "${campaign}" stopped by user ${userId}.`);
-          break;
-        }
-
-        // 2. Pick a random batch size between 1 and the number of active SMTP accounts
-        const activeCount = smtpRotator.getActiveCount(userId);
-        const maxBatchSize = activeCount > 0 ? activeCount : 5; 
-        const currentBatchSize = Math.min(Math.floor(Math.random() * maxBatchSize) + 1, leads.length - i);
-        
-        const batchLeads = leads.slice(i, i + currentBatchSize);
-        i += currentBatchSize;
-
-        logger.debug(`[api] Sending random batch of ${currentBatchSize} emails (Progress: ${i}/${leads.length})`);
-
-        // 3. Process batch in parallel across SMTP pool
-        let batchSuccessCount = 0;
-        await Promise.all(batchLeads.map(async (lead) => {
-          try {
-            const { subject, body } = templateEngine.generate(userId, lead);
-            await emailService.sendEmail(lead.email, subject, body, userId);
-            batchSuccessCount++;
-          } catch (err) {
-            logger.error(`[api] Send failed for ${lead.email}: ${err.message}`);
-          }
-        }));
-
-        // 4. Update counters after batch
-        if (batchSuccessCount > 0) {
-          await campaignState.batchIncrement(userId, batchSuccessCount);
-        }
-
-        // 5. Throttling delay between batches
-        if (i < leads.length) {
-          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS));
-        }
-      }
-
-      // Mark complete if it ran to the end (not stopped)
-      const finalStatus = await campaignState.getStatus(userId);
-      if (finalStatus && finalStatus.isRunning) {
-        await campaignState.stop(userId, false);
-      }
-      logger.info(`[api] Campaign "${campaign}" finished for user ${userId}.`);
+    return res.json({ 
+      success: true, 
+      message: 'Campaign initialized. Browser will now drive the delivery.',
+      totalLeads: leads.length 
     });
 
-    res.json({ success: true, count: leads.length, message: 'Delivery started in background' });
   } catch (err) {
-    logger.error(`[leadRoutes] send error: ${err.message}`);
+    logger.error(`[api] /send error: ${err.message}`);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/leads/batch
+ * Fetch a small batch of leads for a specific campaign.
+ */
+router.get('/batch', async (req, res) => {
+  try {
+    const { campaign, limit = 10 } = req.query;
+    if (!campaign) return res.status(400).json({ error: 'Campaign required' });
+
+    // Fetch leads that are still active for this specific campaign and user
+    const leads = await Lead.find({ 
+      userId: req.user.id, 
+      campaign: campaign.toLowerCase().trim(), 
+      status: 'active' 
+    })
+    .limit(parseInt(limit))
+    .select('_id email status')
+    .lean();
+
+    res.json({ success: true, count: leads.length, leads });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /api/leads/send-one
+ * Send a single email to a specific lead ID.
+ */
+router.post('/send-one', async (req, res) => {
+  try {
+    const { leadId } = req.body;
+    if (!leadId) return res.status(400).json({ error: 'Lead ID required' });
+
+    const lead = await Lead.findOne({ _id: leadId, userId: req.user.id });
+    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+
+    // Ensure templates are refreshed in memory for this session
+    // (Should have been done at campaign start, but good for safety)
+    const { subject, body } = templateEngine.generate(req.user.id, lead);
+    
+    // Send email
+    await emailService.sendEmail(lead.email, subject, body, req.user.id);
+    
+    // Update counter in campaign state
+    await campaignState.increment(req.user.id);
+
+    res.json({ success: true, email: lead.email });
+  } catch (err) {
+    logger.error(`[api] /send-one error: ${err.message}`);
     res.status(500).json({ success: false, error: err.message });
   }
 });

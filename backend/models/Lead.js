@@ -34,13 +34,14 @@ const leadSchema = new mongoose.Schema({
     index: true
   },
 
-  // ── Status ──────────────────────────────────────────────────────────────────
+  // status ──────────────────────────────────────────────────────────────────
   // active       — can receive emails
+  // sent         — successfully emailed in this campaign
   // unsubscribed — opted out; must never be emailed again
   // bounced      — hard/soft bounce; excluded from future sends
   status: {
     type: String,
-    enum: ['active', 'unsubscribed', 'bounced'],
+    enum: ['active', 'sent', 'unsubscribed', 'bounced'],
     default: 'active',
   },
 
