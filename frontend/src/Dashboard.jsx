@@ -220,7 +220,7 @@ export default function Dashboard({ user, onLogout }) {
   useEffect(() => {
     if (!campaignStatus?.isRunning) return;
 
-    const interval = setInterval(handleManualRefresh, 5000);
+    const interval = setInterval(handleManualRefresh, 60000);
     return () => clearInterval(interval);
   }, [campaignStatus?.isRunning]);
 
