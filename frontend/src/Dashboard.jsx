@@ -216,11 +216,11 @@ export default function Dashboard({ user, onLogout }) {
     fetchData(true);
   }, [selectedCampaign, currentPage]);
 
-  // Auto-refresh every 30s ONLY if a campaign is running
+  // Auto-refresh every 5s ONLY if a campaign is running
   useEffect(() => {
     if (!campaignStatus?.isRunning) return;
 
-    const interval = setInterval(handleManualRefresh, 30000);
+    const interval = setInterval(handleManualRefresh, 5000);
     return () => clearInterval(interval);
   }, [campaignStatus?.isRunning]);
 
@@ -384,6 +384,10 @@ export default function Dashboard({ user, onLogout }) {
       // The backend initialized the state, now we start the browser engine
       setCampaignStatus(prev => ({ ...prev, isRunning: true, campaign: selectedCampaign }));
       runCampaignLoop();
+      // Switch to overview tab so the user sees live stats immediately
+      setActiveTab('overview');
+      // Trigger an immediate refresh so stats don't wait 30s
+      handleManualRefresh();
       alert(res.data.message || 'Campaign started!');
     } catch (err) {
       alert('Launch failed: ' + (err.response?.data?.error || err.message));

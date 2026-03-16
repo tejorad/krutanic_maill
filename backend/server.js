@@ -39,7 +39,7 @@ app.use('/api/leads', authMiddleware, leadRoutes);
 app.use('/api/smtp', authMiddleware, smtpRoutes);
 app.use('/api/template', authMiddleware, templateRoutes);
 app.use('/import-leads', authMiddleware, importRoutes);
-app.use('/track', trackingRoutes);
+app.use('/', trackingRoutes);
 
 // Health check
 app.get('/health', (_req, res) =>

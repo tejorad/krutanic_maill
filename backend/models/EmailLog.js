@@ -26,7 +26,8 @@ const emailLogSchema = new mongoose.Schema({
   clickedAt: {
     type: Date
   },
-  // To match the user's ?id=EMAIL_ID request, we'll use a short ID or the Mongo _id
+  // Store destination URLs found in the email for shortened tracking
+  links: [{ type: String }],
   metadata: {
     type: Map,
     of: String

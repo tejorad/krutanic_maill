@@ -32,14 +32,19 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
     await EmailLog.findByIdAndUpdate(logId, { smtp_account: senderEmail }).catch(() => {});
 
     // 2. Prepare body (Pure Text + Click Tracking)
-    const trackedBody = wrapLinks(body, logId);
+    const trackedBody = await wrapLinksAndStore(body, logId);
+    
+    // Append tracking pixel (shortened version)
+    const { encode } = require('../utils/shortId');
+    const shortLogId = encode(logId.toString());
+    const trackingPixel = `\n\n[t: ${process.env.TRACKING_BASE_URL}/o/${shortLogId}]`;
     
     // 3. Prepare email object
     let mailOptions = {
       from,
       to: recipientEmail,
       subject: subject,
-      text: trackedBody,
+      text: trackedBody + trackingPixel,
     };
 
     // 3a. Sign with DKIM if configured
@@ -89,31 +94,45 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
 
 /**
  * Helper to wrap URLs in plain text with tracking redirects
+ * And update the log with the identified links
  */
-function wrapLinks(text, logId) {
+async function wrapLinksAndStore(text, logId) {
   const baseUrl = process.env.TRACKING_BASE_URL;
   if (!baseUrl || !logId) return text;
 
-  // Regex to find URLs (matches http:// and https://)
-  // We use a simple but effective regex for plain text
-  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  const { encode } = require('../utils/shortId');
+  const shortLogId = encode(logId.toString());
 
-  return text.replace(urlRegex, (url) => {
+  // Regex to find URLs (matches http:// and https://)
+  const urlRegex = /(https?:\/\/[^\s]+)/g;
+  
+  const foundLinks = [];
+  const trackedText = text.replace(urlRegex, (url) => {
     // Skip if already a tracking link or looks like a tracking pixel
-    if (url.includes('/track/')) return url;
+    if (url.includes('/track/') || url.includes('/o/') || url.includes('/c/')) return url;
     
-    // Clean trailing punctuation that might be caught in the regex (like a dot at end of sentence)
+    // Clean trailing punctuation
     let cleanUrl = url;
     const lastChar = url[url.length - 1];
     if ([',', '.', '!', '?', ')', ']'].includes(lastChar)) {
       cleanUrl = url.slice(0, -1);
     }
 
-    const encodedUrl = encodeURIComponent(cleanUrl);
-    const suffix = cleanUrl !== url ? url[url.length - 1] : '';
+    const index = foundLinks.length;
+    foundLinks.push(cleanUrl);
     
-    return `${baseUrl}/track/click?id=${logId}&url=${encodedUrl}${suffix}`;
+    const suffix = cleanUrl !== url ? url[url.length - 1] : '';
+    return `${baseUrl}/c/${shortLogId}/${index}${suffix}`;
   });
+
+  // Store the found links in the EmailLog
+  if (foundLinks.length > 0) {
+    await EmailLog.findByIdAndUpdate(logId, { links: foundLinks }).catch(err => {
+      logger.error(`[emailService] Failed to store links for ${logId}: ${err.message}`);
+    });
+  }
+
+  return trackedText;
 }
 
 /**
