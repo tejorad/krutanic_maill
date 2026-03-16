@@ -19,6 +19,14 @@
       "destination": "backend/server.js"
     },
     {
+      "source": "/o/(.*)",
+      "destination": "backend/server.js"
+    },
+    {
+      "source": "/c/(.*)",
+      "destination": "backend/server.js"
+    },
+    {
       "source": "/track/(.*)",
       "destination": "backend/server.js"
     },
