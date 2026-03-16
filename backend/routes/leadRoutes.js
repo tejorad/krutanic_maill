@@ -329,12 +329,17 @@ router.post('/send-one', async (req, res) => {
     if (!leadId) return res.status(400).json({ error: 'Lead ID required' });
 
     const lead = await Lead.findOne({ _id: leadId, userId: req.user.id });
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    if (!lead) {
+      logger.warn(`[api] /send-one: Lead ${leadId} not found for user ${req.user.id}`);
+      return res.status(404).json({ error: 'Lead not found' });
+    }
 
+    logger.info(`[api] /send-one: Generating template for ${lead.email}`);
     // Ensure templates are refreshed in memory for this session
     // (Should have been done at campaign start, but good for safety)
     const { subject, body } = templateEngine.generate(req.user.id, lead);
     
+    logger.info(`[api] /send-one: Sending email to ${lead.email}`);
     // Send email
     await emailService.sendEmail(lead.email, subject, body, req.user.id);
     

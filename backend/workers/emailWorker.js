@@ -39,15 +39,10 @@ const worker = new Worker(
     }
 
     // 2. Generate dynamic email content
-    // (Using email prefix as name if not stored, as per new template engine)
-    const { subject, body } = templateEngine.generate({ 
-      name: lead.email.split('@')[0], 
-      email: lead.email 
-    });
+    const { subject, body } = templateEngine.generate(lead.userId, lead);
 
     // 3 & 4. Get SMTP account from rotator and send email
-    // Handled inside emailService.sendEmail
-    const result = await emailService.sendEmail(lead.email, subject, body);
+    const result = await emailService.sendEmail(lead.email, subject, body, lead.userId);
 
     // 5. Update logs (already handled inside sendEmail and via job lifecycle)
     // 6. Retry if failure occurs (handled automatically by BullMQ configuration)

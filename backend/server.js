@@ -1,6 +1,7 @@
 'use strict';
 
 require('dotenv').config();
+console.log('DEBUG: server.js is starting... [TOKEN: 998811]');
 
 const express   = require('express');
 const cors      = require('cors');
@@ -15,8 +16,22 @@ const authRoutes = require('./routes/authRoutes');
 const authMiddleware = require('./middleware/authMiddleware');
 const smtpRotator = require('./utils/smtpRotator');
 const templateEngine = require('./utils/templateEngine');
-
 const app  = express();
+
+// --- Initialization Middleware for Vercel/Stateless ---
+let initPromise = null;
+const ensureInit = async (req, res, next) => {
+  try {
+    if (!initPromise) {
+      initPromise = initialize();
+    }
+    await initPromise;
+    next();
+  } catch (err) {
+    logger.error(`[ensureInit] Initialization failed: ${err.message}`);
+    res.status(500).json({ success: false, error: 'Server initialization failed' });
+  }
+};
 const PORT = process.env.PORT || 3000;
 
 app.use(cors()); // Enable CORS for dashboard
@@ -35,6 +50,7 @@ app.use((req, res, next) => {
 
 // ── Routes ────────────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api', ensureInit); // Ensure DB and pools are ready for all subsequent API routes
 app.use('/api/leads', authMiddleware, leadRoutes);
 app.use('/api/smtp', authMiddleware, smtpRoutes);
 app.use('/api/template', authMiddleware, templateRoutes);
@@ -63,7 +79,7 @@ const initialize = async () => {
     await connectDB();
     await smtpRotator.refreshPool(); // Initialize SMTP transporters
     await templateEngine.refresh(); // Initialize email templates
-    logger.info('🚀 Systems initialized');
+    logger.info('🚀 Systems initialized (VERSION 2.0)');
   } catch (err) {
     logger.error(`Critical startup error: ${err.message}`);
     // On Vercel, we might not want to exit(1) immediately to allow logs to be sent
@@ -80,9 +96,9 @@ if (!process.env.VERCEL) {
     });
   });
 } else {
-  // On Vercel, we perform a "soft" initialization
-  // Note: Vercel functions are stateless; this runs once per cold start
-  initialize().catch(err => logger.error(`Vercel startup error: ${err.message}`));
+  // On Vercel, we don't start a listener, but we trigger the init
+  // The ensureInit middleware will ensure it's awaited on the first request
+  initPromise = initialize();
 }
 
 module.exports = app;
