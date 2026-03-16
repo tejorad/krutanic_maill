@@ -28,6 +28,29 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
 
     const { transporter, email: senderEmail, from, id: accountId, increment } = account;
     
+    // --- REPLY THREADING LOGIC ---
+    // Check if we have a previous email to this recipient to "thread" the conversation
+    const previousLog = await EmailLog.findOne({ 
+      email: recipientEmail, 
+      userId: userId, 
+      status: { $in: ['sent', 'opened', 'clicked'] } 
+    }).sort({ createdAt: -1 });
+
+    let threadHeaders = {};
+    let finalSubject = subject;
+
+    if (previousLog && previousLog.metadata && previousLog.metadata.get('messageId')) {
+      const prevMsgId = previousLog.metadata.get('messageId');
+      threadHeaders = {
+        'In-Reply-To': prevMsgId,
+        'References': prevMsgId
+      };
+      if (!subject.toLowerCase().startsWith('re:')) {
+        finalSubject = `Re: ${subject}`;
+      }
+      logger.info(`[emailService] Threading email to ${recipientEmail} as reply to ${prevMsgId}`);
+    }
+
     // Update log with SMTP account info
     await EmailLog.findByIdAndUpdate(logId, { smtp_account: senderEmail }).catch(() => {});
 
@@ -43,17 +66,26 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
     let mailOptions = {
       from,
       to: recipientEmail,
-      subject: subject,
+      subject: finalSubject,
       text: trackedBody + trackingPixel,
+      headers: threadHeaders
     };
 
     // 3a. Sign with DKIM if configured
     if (isDkimConfigured()) {
-      mailOptions = await signEmailWithDkim(mailOptions);
+      const senderDomain = senderEmail.split('@')[1];
+      mailOptions = await signEmailWithDkim(mailOptions, senderDomain);
     }
 
     // 3b. Send email
     const info = await transporter.sendMail(mailOptions);
+    
+    // Capture messageId for future threading
+    if (info.messageId) {
+      await EmailLog.findByIdAndUpdate(logId, { 
+        $set: { 'metadata.messageId': info.messageId } 
+      }).catch(() => {});
+    }
 
     // 4. Update sent counter
     await increment();
@@ -85,7 +117,7 @@ async function sendEmailInternal(account, recipientEmail, subject, body, userId)
 
     // SMTP Rotator health tracking
     if (account && !isBounce) {
-      smtpRotator.recordFailure(account.id);
+      smtpRotator.recordFailure(account.id, isAuthError);
     }
     
     throw err;
@@ -107,9 +139,13 @@ async function wrapLinksAndStore(text, logId) {
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   
   const foundLinks = [];
+  logger.info(`[emailService] Wrapping links. BaseURL: ${baseUrl}, LogId: ${logId}`);
   const trackedText = text.replace(urlRegex, (url) => {
     // Skip if already a tracking link or looks like a tracking pixel
-    if (url.includes('/track/') || url.includes('/o/') || url.includes('/c/')) return url;
+    if (url.includes('/track/') || url.includes('/o/') || url.includes('/c/')) {
+      logger.info(`[emailService] Skipping already tracked URL: ${url}`);
+      return url;
+    }
     
     // Clean trailing punctuation
     let cleanUrl = url;
@@ -122,7 +158,9 @@ async function wrapLinksAndStore(text, logId) {
     foundLinks.push(cleanUrl);
     
     const suffix = cleanUrl !== url ? url[url.length - 1] : '';
-    return `${baseUrl}/c/${shortLogId}/${index}${suffix}`;
+    const tracked = `${baseUrl}/c/${shortLogId}/${index}${suffix}`;
+    logger.info(`[emailService] Shortened URL: ${cleanUrl} -> ${tracked}`);
+    return tracked;
   });
 
   // Store the found links in the EmailLog

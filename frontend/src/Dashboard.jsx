@@ -84,6 +84,7 @@ export default function Dashboard({ user, onLogout }) {
   const [isStopping, setIsStopping] = useState(false);
   const [localElapsedMs, setLocalElapsedMs] = useState(0);
   const [isManualRefreshing, setIsManualRefreshing] = useState(false);
+  const [nextSendIn, setNextSendIn] = useState(0); // Countdown for next send in seconds
 
   // Client-side visual ticker - updates UI ONLY, no API calls
   useEffect(() => {
@@ -117,7 +118,8 @@ export default function Dashboard({ user, onLogout }) {
         }
 
         // 2. Fetch a batch of leads
-        const batchRes = await axios.get(`${API_BASE}/api/leads/batch?campaign=${encodeURIComponent(status.campaign)}&limit=10`);
+        // We use a small batch size because the "Boss" loop drives them one-by-one with long delays
+        const batchRes = await axios.get(`${API_BASE}/api/leads/batch?campaign=${encodeURIComponent(status.campaign)}&limit=5`);
         const batchLeads = batchRes.data?.leads || [];
 
         if (batchLeads.length === 0) {
@@ -127,18 +129,38 @@ export default function Dashboard({ user, onLogout }) {
         }
 
         // 3. Send emails in the batch
-        // We'll send them one-by-one to be super safe on Serverless
         for (const lead of batchLeads) {
+          // --- ANTI-SUSPENSION DELAY (Random Jitter: 0.5s to 4.5s) ---
+          // Average delay ~2.5s = ~24 emails/min
+          const delayMs = Math.floor(Math.random() * (45 - 35 + 1)) + 35;;
+          console.log(`Waiting ${(delayMs/1000).toFixed(1)}s before sending to ${lead.email}...`);
+          
+          const startTime = Date.now();
+          while (Date.now() - startTime < delayMs) {
+            const remaining = Math.ceil((delayMs - (Date.now() - startTime)) / 1000);
+            setNextSendIn(remaining);
+            
+            // Check status every 1s
+            const statusCheckRes = await axios.get(`${API_BASE}/api/leads/campaign-status`).catch(() => ({ data: { data: { isRunning: true } } }));
+            if (!statusCheckRes.data?.data?.isRunning) {
+              setNextSendIn(0);
+              return;
+            }
+            
+            await new Promise(r => setTimeout(r, 1000));
+            // Break early if we finished while waiting
+            if (Date.now() - startTime >= delayMs) break;
+          }
+          setNextSendIn(0);
+
           try {
             await axios.post(`${API_BASE}/api/leads/send-one`, { leadId: lead._id });
+            // Refresh UI stats after each send to show progress
+            handleManualRefresh();
           } catch (err) {
             console.error(`Failed to send to ${lead.email}:`, err.message);
           }
         }
-
-        // 4. Randomized delay between batches (0.5s to 1s)
-        const delay = Math.floor(Math.random() * 500) + 500;
-        await new Promise(resolve => setTimeout(resolve, delay));
         
         // 5. Refresh UI stats
         handleManualRefresh();
@@ -921,6 +943,7 @@ export default function Dashboard({ user, onLogout }) {
               value={stats.sentToday.toLocaleString()} 
               sub={campaignStatus.isRunning ? "Active Campaign" : "Daily Volume"} 
               active={campaignStatus.isRunning}
+              countdown={nextSendIn}
             />
             <StatCard 
               icon={<Eye size={20} color="var(--success)" />} 
@@ -1648,7 +1671,7 @@ function SmtpItemCompact({ user, sends, limit = 500, status }) {
   );
 }
 
-function StatCard({ icon, title, value, sub, active = false }) {
+function StatCard({ icon, title, value, sub, active = false, countdown = 0 }) {
   return (
     <div className={`glass-card stat-card-v2 ${active ? 'glow' : ''}`} style={{ border: active ? '1px solid var(--primary)' : '1px solid var(--border-glass)' }}>
       <div style={{ 
@@ -1661,11 +1684,17 @@ function StatCard({ icon, title, value, sub, active = false }) {
         {icon}
       </div>
       <h4 style={{ color: 'var(--text-dim)', fontSize: '13px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>{title}</h4>
-      <div style={{ 
-        fontSize: '32px', fontWeight: '800', marginBottom: '4px', 
-        background: 'linear-gradient(to right, #fff, #94a3b8)',
-        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-      }}>{value}</div>
+      {active && countdown > 0 ? (
+        <div style={{ fontSize: '32px', fontWeight: '800', marginBottom: '4px', color: 'var(--primary)' }}>
+          Next: {countdown}s
+        </div>
+      ) : (
+        <div style={{ 
+          fontSize: '32px', fontWeight: '800', marginBottom: '4px', 
+          background: 'linear-gradient(to right, #fff, #94a3b8)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+        }}>{value}</div>
+      )}
       <div style={{ fontSize: '12px', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '4px' }}>
         {active && <span className="pulse" style={{ width: '6px', height: '6px', background: 'var(--success)', borderRadius: '50%' }} />}
         {sub}

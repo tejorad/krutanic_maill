@@ -92,14 +92,17 @@ function next(userId) {
 
 const MAX_FAILURES = 5;
 
-function recordFailure(id) {
+function recordFailure(id, force = false) {
   const entry = pool.find(e => e.id.toString() === id.toString());
   if (!entry) return;
+  
   entry.failureCount += 1;
-  if (entry.failureCount >= MAX_FAILURES) {
+  const isFatal = force || entry.failureCount >= MAX_FAILURES;
+  
+  if (isFatal) {
     entry.active = false;
     SmtpAccount.findByIdAndUpdate(id, { status: 'error' }).catch(() => { });
-    logger.warn(`[smtpRotator] Account ${entry.email} deactivated after ${MAX_FAILURES} failures.`);
+    logger.warn(`[smtpRotator] Account ${entry.email} deactivated. (Fatal/Force: ${force}, Failures: ${entry.failureCount})`);
   }
 }
 
