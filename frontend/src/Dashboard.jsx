@@ -909,22 +909,43 @@ export default function Dashboard({ user, onLogout }) {
       {activeTab === 'overview' && (
         <div style={{ display: 'grid', gap: '32px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
-            <StatCard icon={<Users color="var(--primary)" />} title="Total Leads" value={stats.totalLeads.toLocaleString()} sub="Verified emails" />
-            <StatCard icon={<Send color="var(--primary)" />} title="Sent Today" value={stats.sentToday.toLocaleString()} sub="24h volume" />
-            <StatCard icon={<CheckCircle color="var(--success)" />} title="Open Rate" value={`${stats.openRate}%`} sub="Real-time engagement" />
-            <StatCard icon={<BarChart3 color="var(--secondary)" />} title="Click Rate" value={`${stats.clickRate}%`} sub="Link interactions" />
+            <StatCard 
+              icon={<Users size={20} color={stats.totalLeads > 0 ? "white" : "var(--primary)"} />} 
+              title="Total Leads" 
+              value={stats.totalLeads.toLocaleString()} 
+              sub="Verified database" 
+            />
+            <StatCard 
+              icon={<Send size={20} color={campaignStatus.isRunning ? "white" : "var(--primary)"} />} 
+              title="Sent Today" 
+              value={stats.sentToday.toLocaleString()} 
+              sub={campaignStatus.isRunning ? "Active Campaign" : "Daily Volume"} 
+              active={campaignStatus.isRunning}
+            />
+            <StatCard 
+              icon={<Eye size={20} color="var(--success)" />} 
+              title="Open Rate" 
+              value={`${stats.openRate}%`} 
+              sub="Direct Engagement" 
+            />
+            <StatCard 
+              icon={<TrendingUp size={20} color="var(--secondary)" />} 
+              title="Click Rate" 
+              value={`${stats.clickRate}%`} 
+              sub="Interaction Rate" 
+            />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '32px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr 1fr', gap: '24px' }}>
+            {/* Chart Area */}
             <div className="glass-card" style={{ height: '400px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
-                <h3 style={{ fontSize: '18px' }}>Delivery Trends</h3>
+                <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Delivery Trends</h3>
                 <RefreshCw 
                   size={16} 
                   className={`text-muted ${isManualRefreshing ? 'spin' : ''}`} 
                   style={{ cursor: 'pointer', transition: 'all 0.3s' }} 
                   onClick={handleManualRefresh} 
-                  title="Manual Refresh" 
                 />
               </div>
               <ResponsiveContainer width="100%" height="85%">
@@ -936,38 +957,52 @@ export default function Dashboard({ user, onLogout }) {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
-                  <XAxis 
-                    dataKey="name" 
-                    tick={{ fill: 'var(--text-dim)', fontSize: 11 }} 
-                    tickLine={false}
-                    interval={3}
-                  />
-                  <YAxis 
-                    tick={{ fill: 'var(--text-dim)', fontSize: 11 }} 
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                  />
+                  <XAxis dataKey="name" tick={{ fill: 'var(--text-dim)', fontSize: 11 }} tickLine={false} interval={3} />
+                  <YAxis tick={{ fill: 'var(--text-dim)', fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
                   <Tooltip 
-                    contentStyle={{ background: 'rgba(0,0,0,0.8)', border: '1px solid var(--border-glass)', borderRadius: '12px' }}
+                    contentStyle={{ background: 'rgba(10,10,12,0.95)', border: '1px solid var(--border-glass)', borderRadius: '12px', backdropFilter: 'blur(10px)' }}
                     itemStyle={{ color: 'white' }}
-                    labelStyle={{ color: 'var(--text-muted)' }}
                   />
                   <Area type="monotone" dataKey="volume" stroke="var(--primary)" fillOpacity={1} fill="url(#colorVol)" strokeWidth={3} />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
 
-            <div className="glass-card">
+            {/* Live Activity Feed */}
+            <div className="glass-card" style={{ height: '400px', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <TrendingUp size={18} color="var(--success)" />
+                  <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Live Activity</h3>
+                </div>
+                {campaignStatus.isRunning && <span className="pulse" style={{ width: '8px', height: '8px', background: 'var(--success)', borderRadius: '50%' }} />}
+              </div>
+              <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gap: '12px', paddingRight: '4px', alignContent: 'start' }}>
+                {logs.filter(l => l.status !== 'sent').slice(0, 15).map(log => (
+                  <RecentActivityItem key={log._id} log={log} />
+                ))}
+                {logs.filter(l => l.status !== 'sent').length === 0 && (
+                  <div style={{ flex: 1, display: 'grid', placeItems: 'center', textAlign: 'center', color: 'var(--text-dim)', fontSize: '13px', paddingTop: '40px' }}>
+                    <div style={{ opacity: 0.5 }}>
+                      <RefreshCw size={32} style={{ marginBottom: '12px' }} />
+                      <p>Waiting for events...</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* SMTP Status */}
+            <div className="glass-card" style={{ height: '400px', display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
-                <h3 style={{ fontSize: '18px' }}>Quick Stats</h3>
+                <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Relay Status</h3>
                 <RefreshCw size={16} className="text-muted" style={{ cursor: 'pointer' }} onClick={fetchData} />
               </div>
-              <div style={{ display: 'grid', gap: '16px', maxHeight: '400px', overflowY: 'auto', paddingRight: '8px' }}>
+              <div style={{ flex: 1, overflowY: 'auto', display: 'grid', gap: '16px', paddingRight: '8px', alignContent: 'start' }}>
                 {smtpAccounts.length > 0 ? smtpAccounts.map(acc => (
                   <SmtpItemCompact key={acc._id} user={acc.email} sends={acc.sent_today} limit={acc.daily_limit} status={acc.status} />
                 )) : (
-                  <div style={{ color: 'var(--text-dim)', fontSize: '13px' }}>No SMTP accounts configured.</div>
+                  <div style={{ color: 'var(--text-dim)', fontSize: '13px', textAlign: 'center', paddingTop: '40px' }}>No SMTP accounts.</div>
                 )}
               </div>
             </div>
@@ -1613,15 +1648,58 @@ function SmtpItemCompact({ user, sends, limit = 500, status }) {
   );
 }
 
-function StatCard({ icon, title, value, sub }) {
+function StatCard({ icon, title, value, sub, active = false }) {
   return (
-    <div className="glass-card">
-      <div style={{ width: '40px', height: '40px', background: 'var(--bg-glass-heavy)', borderRadius: '12px', display: 'grid', placeItems: 'center', marginBottom: '16px' }}>
+    <div className={`glass-card stat-card-v2 ${active ? 'glow' : ''}`} style={{ border: active ? '1px solid var(--primary)' : '1px solid var(--border-glass)' }}>
+      <div style={{ 
+        width: '44px', height: '44px', 
+        background: active ? 'var(--primary)' : 'var(--bg-glass-heavy)', 
+        borderRadius: '12px', display: 'grid', placeItems: 'center', marginBottom: '16px',
+        boxShadow: active ? '0 0 15px var(--primary-glow)' : 'none',
+        transition: 'all 0.3s ease'
+      }}>
         {icon}
       </div>
-      <h4 style={{ color: 'var(--text-dim)', fontSize: '14px', marginBottom: '8px' }}>{title}</h4>
-      <div style={{ fontSize: '28px', fontWeight: '800', marginBottom: '4px' }}>{value}</div>
-      <div style={{ fontSize: '12px', color: 'var(--text-dim)' }}>{sub}</div>
+      <h4 style={{ color: 'var(--text-dim)', fontSize: '13px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>{title}</h4>
+      <div style={{ 
+        fontSize: '32px', fontWeight: '800', marginBottom: '4px', 
+        background: 'linear-gradient(to right, #fff, #94a3b8)',
+        WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
+      }}>{value}</div>
+      <div style={{ fontSize: '12px', color: 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+        {active && <span className="pulse" style={{ width: '6px', height: '6px', background: 'var(--success)', borderRadius: '50%' }} />}
+        {sub}
+      </div>
+    </div>
+  );
+}
+
+function RecentActivityItem({ log }) {
+  const isClick = log.status === 'clicked';
+  const isOpen = log.status === 'opened';
+  const time = new Date(log.updatedAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  return (
+    <div className="activity-item" style={{ 
+      padding: '12px', background: 'var(--bg-glass-heavy)', borderRadius: '12px', 
+      border: '1px solid var(--border-glass)', display: 'flex', gap: '12px', alignItems: 'center'
+    }}>
+      <div style={{
+        width: '36px', height: '36px', borderRadius: '10px', display: 'grid', placeItems: 'center',
+        background: isClick ? 'rgba(168, 85, 247, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+        color: isClick ? 'var(--secondary)' : 'var(--success)'
+      }}>
+        {isClick ? <TrendingUp size={16} /> : <Eye size={16} />}
+      </div>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontSize: '13px', fontWeight: '600' }}>
+          {isClick ? 'Link Clicked' : 'Email Opened'}
+        </div>
+        <div style={{ fontSize: '11px', color: 'var(--text-dim)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }}>
+          {log.email}
+        </div>
+      </div>
+      <div style={{ fontSize: '10px', color: 'var(--text-dim)', fontWeight: '500' }}>{time}</div>
     </div>
   );
 }
