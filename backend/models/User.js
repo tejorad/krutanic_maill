@@ -21,4 +21,4 @@ userSchema.methods.comparePassword = async function(candidatePassword) {
   return candidatePassword === this.password;
 };
 
-module.exports = mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema, 'bastuser');

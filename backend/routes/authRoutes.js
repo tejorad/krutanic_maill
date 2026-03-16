@@ -46,11 +46,39 @@ router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
-    const user = await User.findOne({ email });
+    let user = await User.findOne({ email });
+    let isLegacy = false;
+
+    // Fallback to legacy 'users' collection if not found in 'bastuser'
+    if (!user) {
+      const db = require('mongoose').connection.db;
+      const legacyUser = await db.collection('users').findOne({ email: email.toLowerCase().trim() });
+      
+      if (legacyUser) {
+        // Create a temporary User instance to use the comparePassword method
+        user = new User(legacyUser);
+        isLegacy = true;
+      }
+    }
     if (!user || !(await user.comparePassword(password))) {
       return res.status(401).json({ success: false, error: 'Invalid email or password' });
     }
 
+    // If it was a legacy user, migrate them to 'bastuser'
+    if (isLegacy) {
+      try {
+        const userData = user.toObject();
+        // Insert into 'bastuser' (handled by User.create or User.save)
+        await User.create(userData);
+        // Remove from legacy 'users' collection
+        const db = require('mongoose').connection.db;
+        await db.collection('users').deleteOne({ _id: user._id });
+        logger.info(`[authRoutes] Migrated legacy user: ${email}`);
+      } catch (migrationErr) {
+        logger.error(`[authRoutes] Migration error for ${email}: ${migrationErr.message}`);
+        // We continue anyway since login was successful, but ideally migration should succeed
+      }
+    }
     const token = jwt.sign({ id: user._id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
     
     res.json({ success: true, data: { user: { id: user._id, name: user.name, email: user.email }, token } });
