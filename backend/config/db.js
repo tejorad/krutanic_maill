@@ -8,7 +8,9 @@ const logger = require('../utils/logger');
  */
 async function connectDB() {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
+    const uri = process.env.MONGO_URI;
+    logger.info(`Connecting to MongoDB... (URI starts with: ${uri ? uri.substring(0, 20) : 'undefined'}...)`);
+    await mongoose.connect(uri, {
       maxPoolSize: 10,
       serverSelectionTimeoutMS: 5000,
     });

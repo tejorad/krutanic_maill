@@ -90,7 +90,7 @@ function next(userId) {
   };
 }
 
-const MAX_FAILURES = 5;
+const MAX_FAILURES = 1;
 
 function recordFailure(id, force = false) {
   const entry = pool.find(e => e.id.toString() === id.toString());
@@ -109,6 +109,21 @@ function recordFailure(id, force = false) {
 function resetFailures() {
   pool.forEach((e) => { e.failureCount = 0; e.active = true; });
   logger.info('[smtpRotator] All SMTP accounts reactivated in memory.');
+}
+
+/**
+ * Activate all SMTP accounts for a user in the database.
+ */
+async function activateAllAccounts(userId) {
+  try {
+    const uId = userId.toString();
+    await SmtpAccount.updateMany({ userId: uId }, { status: 'active', enabled: true });
+    logger.info(`[smtpRotator] All SMTP accounts for user ${uId} activated in DB.`);
+    // Refresh the pool to reflect DB changes
+    await refreshPool();
+  } catch (err) {
+    logger.error(`[smtpRotator] Failed to activate accounts: ${err.message}`);
+  }
 }
 
 /** 
@@ -141,4 +156,4 @@ function getActiveCount(userId) {
   return activePool(uId).length;
 }
 
-module.exports = { next, getById, getActiveCount, recordFailure, resetFailures, refreshPool };
+module.exports = { next, getById, getActiveCount, recordFailure, resetFailures, refreshPool, activateAllAccounts };

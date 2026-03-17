@@ -278,8 +278,10 @@ router.post('/send', async (req, res) => {
       return res.status(400).json({ success: false, error: `No active leads for campaign: ${campaign}` });
     }
 
-    // Refresh SMTP pool
-    await smtpRotator.refreshPool();    // Start campaign state tracking for this user
+    // Activate all SMTP accounts for the user and refresh the pool
+    await smtpRotator.activateAllAccounts(req.user.id);
+    
+    // Start campaign state tracking for this user
     await campaignState.start(req.user.id, campaign, leads.length);
 
     return res.json({ 
