@@ -1,18 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Dashboard from './Dashboard';
 import Auth from './Auth';
-import axios from 'axios';
-
-// Register axios interceptor to attach token to every request automatically
-axios.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-}, (error) => {
-  return Promise.reject(error);
-});
+import api from './api';
 
 function App() {
   const [user, setUser] = useState(null);

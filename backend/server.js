@@ -54,7 +54,7 @@ app.use('/api', ensureInit); // Ensure DB and pools are ready for all subsequent
 app.use('/api/leads', authMiddleware, leadRoutes);
 app.use('/api/smtp', authMiddleware, smtpRoutes);
 app.use('/api/template', authMiddleware, templateRoutes);
-app.use('/import-leads', authMiddleware, importRoutes);
+app.use('/api/import-leads', authMiddleware, importRoutes);
 app.use('/', trackingRoutes);
 
 // Health check

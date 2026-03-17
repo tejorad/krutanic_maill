@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from './api';
 import logo from './assets/image.png';
-import { 
-  Users, 
-  Send, 
-  CheckCircle, 
-  XCircle, 
-  BarChart3, 
-  Server, 
-  Upload, 
-  Play, 
+import {
+  Users,
+  Send,
+  CheckCircle,
+  XCircle,
+  BarChart3,
+  Server,
+  Upload,
+  Play,
   RefreshCw,
   Search,
   Mail,
@@ -25,11 +25,11 @@ import {
   TrendingUp,
   LogOut
 } from 'lucide-react';
-import { 
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area 
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area
 } from 'recharts';
 
-const API_BASE = '';
+
 
 export default function Dashboard({ user, onLogout }) {
   // ── State ──────────────────────────────────────────────────────────────────
@@ -106,11 +106,11 @@ export default function Dashboard({ user, onLogout }) {
     isLoopRunning.current = true;
 
     console.log("Starting Browser-Driven Campaign Loop...");
-    
+
     try {
       while (true) {
         // 1. Check if stopped by user or manually
-        const statusRes = await axios.get(`${API_BASE}/api/leads/campaign-status`);
+        const statusRes = await api.get('/leads/campaign-status');
         const status = statusRes.data?.data;
         if (!status || !status.isRunning) {
           console.log("Campaign stopped or finished.");
@@ -119,12 +119,12 @@ export default function Dashboard({ user, onLogout }) {
 
         // 2. Fetch a batch of leads
         // We use a small batch size because the "Boss" loop drives them one-by-one with long delays
-        const batchRes = await axios.get(`${API_BASE}/api/leads/batch?campaign=${encodeURIComponent(status.campaign)}&limit=5`);
+        const batchRes = await api.get(`/leads/batch?campaign=${encodeURIComponent(status.campaign)}&limit=5`);
         const batchLeads = batchRes.data?.leads || [];
 
         if (batchLeads.length === 0) {
           console.log("No more leads found. Marking as complete.");
-          await axios.post(`${API_BASE}/api/leads/stop`);
+          await api.post('/leads/stop');
           break;
         }
 
@@ -133,20 +133,20 @@ export default function Dashboard({ user, onLogout }) {
           // --- ANTI-SUSPENSION DELAY (Random Jitter: 0.5s to 4.5s) ---
           // Average delay ~2.5s = ~24 emails/min
           const delayMs = Math.floor(Math.random() * (45 - 35 + 1)) + 35;;
-          console.log(`Waiting ${(delayMs/1000).toFixed(1)}s before sending to ${lead.email}...`);
-          
+          console.log(`Waiting ${(delayMs / 1000).toFixed(1)}s before sending to ${lead.email}...`);
+
           const startTime = Date.now();
           while (Date.now() - startTime < delayMs) {
             const remaining = Math.ceil((delayMs - (Date.now() - startTime)) / 1000);
             setNextSendIn(remaining);
-            
+
             // Check status every 1s
-            const statusCheckRes = await axios.get(`${API_BASE}/api/leads/campaign-status`).catch(() => ({ data: { data: { isRunning: true } } }));
+            const statusCheckRes = await api.get('/leads/campaign-status').catch(() => ({ data: { data: { isRunning: true } } }));
             if (!statusCheckRes.data?.data?.isRunning) {
               setNextSendIn(0);
               return;
             }
-            
+
             await new Promise(r => setTimeout(r, 1000));
             // Break early if we finished while waiting
             if (Date.now() - startTime >= delayMs) break;
@@ -154,14 +154,14 @@ export default function Dashboard({ user, onLogout }) {
           setNextSendIn(0);
 
           try {
-            await axios.post(`${API_BASE}/api/leads/send-one`, { leadId: lead._id });
+            await api.post('/leads/send-one', { leadId: lead._id });
             // Refresh UI stats after each send to show progress
             handleManualRefresh();
           } catch (err) {
             console.error(`Failed to send to ${lead.email}:`, err.message);
           }
         }
-        
+
         // 5. Refresh UI stats
         handleManualRefresh();
       }
@@ -199,22 +199,22 @@ export default function Dashboard({ user, onLogout }) {
   const fetchData = async (includeTemplate = false) => {
     try {
       const campaignParam = selectedCampaign !== 'all' ? `?campaign=${encodeURIComponent(selectedCampaign)}` : '';
-      
+
       const promises = [
-        axios.get(`${API_BASE}/api/leads/stats${campaignParam}`),
-        axios.get(`${API_BASE}/api/leads${campaignParam}${campaignParam ? '&' : '?'}limit=${PAGE_SIZE}&page=${currentPage}`),
-        axios.get(`${API_BASE}/api/smtp/status`),
-        axios.get(`${API_BASE}/api/leads/logs`),
-        axios.get(`${API_BASE}/api/leads/campaigns`)
+        api.get(`/leads/stats${campaignParam}`),
+        api.get(`/leads${campaignParam}${campaignParam ? '&' : '?'}limit=${PAGE_SIZE}&page=${currentPage}`),
+        api.get('/smtp/status'),
+        api.get('/leads/logs'),
+        api.get('/leads/campaigns')
       ];
 
       if (includeTemplate) {
-        promises.push(axios.get(`${API_BASE}/api/template`));
+        promises.push(api.get('/template'));
       }
-      
+
       const results = await Promise.all(promises);
       const [statsRes, leadsRes, smtpRes, logsRes, campaignsRes] = results;
-      
+
       if (statsRes.data?.success) setStats(statsRes.data.data);
       if (leadsRes.data?.success) {
         setLeads(leadsRes.data.data);
@@ -252,7 +252,7 @@ export default function Dashboard({ user, onLogout }) {
       try {
         const res = await axios.get(`${API_BASE}/api/leads/campaign-status`);
         if (res.data?.success) setCampaignStatus(res.data.data);
-      } catch (_) {}
+      } catch (_) { }
     };
     pollStatus();
   }, []);
@@ -264,9 +264,9 @@ export default function Dashboard({ user, onLogout }) {
         fetchData(true),
         (async () => {
           try {
-            const res = await axios.get(`${API_BASE}/api/leads/campaign-status`);
+            const res = await api.get('/leads/campaign-status');
             if (res.data?.success) setCampaignStatus(res.data.data);
-          } catch (_) {}
+          } catch (_) { }
         })()
       ]);
     } finally {
@@ -274,10 +274,10 @@ export default function Dashboard({ user, onLogout }) {
       setTimeout(() => setIsManualRefreshing(false), 500);
     }
   };
-  
+
   const handleSmtpToggle = async (id, enabled) => {
     try {
-      await axios.patch(`${API_BASE}/api/smtp/${id}`, { enabled: !enabled });
+      await api.patch(`/smtp/${id}`, { enabled: !enabled });
       fetchData();
     } catch (err) {
       alert("Failed to update account: " + err.message);
@@ -287,7 +287,7 @@ export default function Dashboard({ user, onLogout }) {
   const handleSmtpDelete = async (id) => {
     if (!window.confirm("Remove this SMTP account?")) return;
     try {
-      await axios.delete(`${API_BASE}/api/smtp/${id}`);
+      await api.delete(`/smtp/${id}`);
       fetchData();
     } catch (err) {
       alert("Failed to delete account: " + err.message);
@@ -300,7 +300,7 @@ export default function Dashboard({ user, onLogout }) {
       return;
     }
     try {
-      await axios.post(`${API_BASE}/api/smtp`, newSmtp);
+      await api.post('/smtp', newSmtp);
       setNewSmtp({ email: '', app_password: '', daily_limit: 500 });
       setShowSmtpModal(false);
       fetchData();
@@ -321,7 +321,7 @@ export default function Dashboard({ user, onLogout }) {
 
     setIsUploading(true);
     try {
-      const res = await axios.post(`${API_BASE}/import-leads`, formData, {
+      const res = await api.post('/import-leads', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       alert(`Import Successful! Imported ${res.data.imported} new leads to ${selectedCampaign}.`);
@@ -335,12 +335,12 @@ export default function Dashboard({ user, onLogout }) {
 
   const handleFileChange = (e) => {
     uploadFile(e.target.files?.[0]);
-    e.target.value = ''; 
+    e.target.value = '';
   };
 
   const handlePasteImport = async () => {
     const emails = [...new Set(pasteText.match(/([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+\.[a-zA-Z0-9._-]+)/gi) || [])];
-    
+
     if (emails.length === 0) {
       alert("No valid email addresses found in text.");
       return;
@@ -354,9 +354,9 @@ export default function Dashboard({ user, onLogout }) {
     setIsUploading(true);
     try {
       // Note: We need to update backend bulk endpoint too, or just use import-leads logic
-      const res = await axios.post(`${API_BASE}/api/leads/bulk`, { 
-        emails, 
-        campaign: selectedCampaign 
+      const res = await api.post('/leads/bulk', {
+        emails,
+        campaign: selectedCampaign
       });
       alert(`Successfully imported ${res.data.inserted} leads to ${selectedCampaign} (${res.data.skipped} duplicates skipped).`);
       setPasteText('');
@@ -399,10 +399,10 @@ export default function Dashboard({ user, onLogout }) {
       return;
     }
     if (!window.confirm(`Start campaign for all active leads in "${selectedCampaign}"?`)) return;
-    
+
     setIsLaunching(true);
     try {
-      const res = await axios.post(`${API_BASE}/api/leads/send`, { campaign: selectedCampaign });
+      const res = await api.post('/leads/send', { campaign: selectedCampaign });
       // The backend initialized the state, now we start the browser engine
       setCampaignStatus(prev => ({ ...prev, isRunning: true, campaign: selectedCampaign }));
       runCampaignLoop();
@@ -422,7 +422,7 @@ export default function Dashboard({ user, onLogout }) {
     if (!window.confirm('Stop the running campaign?')) return;
     setIsStopping(true);
     try {
-      await axios.post(`${API_BASE}/api/leads/stop`);
+      await api.post('/leads/stop');
     } catch (err) {
       alert('Stop failed: ' + (err.response?.data?.error || err.message));
     } finally {
@@ -434,7 +434,7 @@ export default function Dashboard({ user, onLogout }) {
     e.stopPropagation();
     if (!window.confirm(`Delete campaign "${campaignName}" and ALL its leads? This cannot be undone.`)) return;
     try {
-      const res = await axios.delete(`${API_BASE}/api/leads/campaigns/${encodeURIComponent(campaignName)}`);
+      const res = await api.delete(`/leads/campaigns/${encodeURIComponent(campaignName)}`);
       alert(`Deleted! ${res.data.leadsDeleted} leads removed.`);
       if (selectedCampaign === campaignName) setSelectedCampaign('all');
       fetchData();
@@ -446,9 +446,9 @@ export default function Dashboard({ user, onLogout }) {
   const handleCreateCampaign = async () => {
     const name = newCampaignName.trim();
     if (!name) return;
-    
+
     try {
-      await axios.post(`${API_BASE}/api/leads/campaigns`, { name });
+      await api.post('/leads/campaigns', { name });
       setSelectedCampaign(name);
       setNewCampaignName('');
       setShowCampaignModal(false);
@@ -461,7 +461,7 @@ export default function Dashboard({ user, onLogout }) {
   const handleUpdateTemplate = async () => {
     setIsSavingTemplate(true);
     try {
-      await axios.patch(`${API_BASE}/api/template`, template);
+      await api.patch('/template', template);
       alert("Template saved successfully!");
     } catch (err) {
       alert("Failed to save template: " + (err.response?.data?.error || err.message));
@@ -471,9 +471,9 @@ export default function Dashboard({ user, onLogout }) {
   };
 
   const addTemplateItem = (key) => {
-    setTemplate(prev => ({ 
-      ...prev, 
-      [key]: [...(prev[key] || []), { content: '', enabled: true }] 
+    setTemplate(prev => ({
+      ...prev,
+      [key]: [...(prev[key] || []), { content: '', enabled: true }]
     }));
   };
 
@@ -524,7 +524,7 @@ export default function Dashboard({ user, onLogout }) {
   const handleDeleteLead = async (id) => {
     if (!window.confirm("Delete this lead?")) return;
     try {
-      await axios.delete(`${API_BASE}/api/leads/${id}`);
+      await api.delete(`/leads/${id}`);
       fetchData();
     } catch (err) {
       alert("Failed to delete lead: " + err.message);
@@ -534,7 +534,7 @@ export default function Dashboard({ user, onLogout }) {
   const handleClearLogs = async () => {
     if (!window.confirm("Are you sure you want to clear all delivery logs? This cannot be undone.")) return;
     try {
-      await axios.delete(`${API_BASE}/api/leads/logs`);
+      await api.delete('/leads/logs');
       fetchData();
     } catch (err) {
       alert("Failed to clear logs: " + err.message);
@@ -555,8 +555,8 @@ export default function Dashboard({ user, onLogout }) {
   })();
 
   return (
-    <div 
-      className="container" 
+    <div
+      className="container"
       style={{ paddingTop: '100px', minHeight: '100vh' }}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -589,37 +589,37 @@ export default function Dashboard({ user, onLogout }) {
             <div style={{ display: 'grid', gap: '16px' }}>
               <div>
                 <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>Gmail Address</label>
-                <input 
-                  type="email" 
+                <input
+                  type="email"
                   value={newSmtp.email}
-                  onChange={(e) => setNewSmtp({...newSmtp, email: e.target.value})}
+                  onChange={(e) => setNewSmtp({ ...newSmtp, email: e.target.value })}
                   placeholder="abdul@krutanic.org"
                   style={{ width: '100%', padding: '12px', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'white' }}
                 />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>App Password (16 chars)</label>
-                <input 
-                  type="password" 
+                <input
+                  type="password"
                   value={newSmtp.app_password}
-                  onChange={(e) => setNewSmtp({...newSmtp, app_password: e.target.value})}
+                  onChange={(e) => setNewSmtp({ ...newSmtp, app_password: e.target.value })}
                   placeholder="xxxx xxxx xxxx xxxx"
                   style={{ width: '100%', padding: '12px', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'white' }}
                 />
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>Daily Limit</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   value={newSmtp.daily_limit}
-                  onChange={(e) => setNewSmtp({...newSmtp, daily_limit: parseInt(e.target.value)})}
+                  onChange={(e) => setNewSmtp({ ...newSmtp, daily_limit: parseInt(e.target.value) })}
                   style={{ width: '100%', padding: '12px', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'white' }}
                 />
               </div>
             </div>
             <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
               <button className="btn-primary" onClick={handleAddSmtp} style={{ flex: 1 }}>Add Account</button>
-              <button 
+              <button
                 onClick={() => setShowSmtpModal(false)}
                 style={{ flex: 1, padding: '12px', background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-glass)', borderRadius: '12px', color: 'white' }}
               >
@@ -661,7 +661,7 @@ export default function Dashboard({ user, onLogout }) {
             <p style={{ color: 'var(--text-dim)', fontSize: '14px', marginBottom: '20px' }}>
               Paste any text containing emails. We will extract <strong>example@gmail.com</strong> from lists, messy notes, or Google Forms.
             </p>
-            <textarea 
+            <textarea
               value={pasteText}
               onChange={(e) => setPasteText(e.target.value)}
               placeholder="Example: abdul@krutanic.org, tarun@gmail.com..."
@@ -673,15 +673,15 @@ export default function Dashboard({ user, onLogout }) {
               }}
             />
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 onClick={handlePasteImport}
                 disabled={isUploading}
                 style={{ flex: 1 }}
               >
                 {isUploading ? <Loader2 size={18} className="spin" /> : 'Import Emails'}
               </button>
-              <button 
+              <button
                 onClick={() => setShowPasteModal(false)}
                 style={{ flex: 1, padding: '12px', background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-glass)', borderRadius: '12px', color: 'white' }}
               >
@@ -704,7 +704,7 @@ export default function Dashboard({ user, onLogout }) {
             <p style={{ color: 'var(--text-dim)', fontSize: '14px', marginBottom: '20px' }}>
               Paste your template arrays below (format: <code>const SUBJECTS = [...];</code>).
             </p>
-            <textarea 
+            <textarea
               value={templateImportText}
               onChange={(e) => setTemplateImportText(e.target.value)}
               placeholder="const SUBJECTS = [ ... ];"
@@ -716,14 +716,14 @@ export default function Dashboard({ user, onLogout }) {
               }}
             />
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 onClick={handleTemplateBulkImport}
                 style={{ flex: 1 }}
               >
                 Parse & Load
               </button>
-              <button 
+              <button
                 onClick={() => setShowTemplateImportModal(false)}
                 style={{ flex: 1, padding: '12px', background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-glass)', borderRadius: '12px', color: 'white' }}
               >
@@ -735,11 +735,11 @@ export default function Dashboard({ user, onLogout }) {
       )}
 
       {/* Hidden File Input */}
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        onChange={handleFileChange} 
-        style={{ display: 'none' }} 
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        style={{ display: 'none' }}
         accept=".csv"
       />
 
@@ -751,13 +751,13 @@ export default function Dashboard({ user, onLogout }) {
           </div>
           <img src={logo} alt="Krutanic Mail" style={{ height: '40px', objectFit: 'contain' }} />
         </div>
-        
+
         <div style={{ display: 'flex', gap: '24px', alignItems: 'center' }}>
           {['overview', 'leads', 'template', 'smtp', 'logs', 'spam-test'].map(tab => (
-            <button 
+            <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              style={{ 
+              style={{
                 background: 'transparent',
                 border: 'none',
                 cursor: 'pointer',
@@ -772,27 +772,27 @@ export default function Dashboard({ user, onLogout }) {
               {tab.replace('-', ' ')}
             </button>
           ))}
-          
+
           <div style={{ width: '1px', height: '24px', background: 'var(--border-glass)', margin: '0 8px' }} />
-          
+
           {/* User Profile & Logout */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-             <div style={{ textAlign: 'right', display: 'none', md: 'block' }}>
-               <div style={{ fontSize: '14px', fontWeight: '600', color: 'white' }}>{user?.name || 'User'}</div>
-               <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{user?.email}</div>
-             </div>
-             <button 
-               onClick={onLogout}
-               className="btn-secondary"
-               style={{ padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}
-               title="Logout"
-             >
-               <LogOut size={18} />
-             </button>
+            <div style={{ textAlign: 'right', display: 'none', md: 'block' }}>
+              <div style={{ fontSize: '14px', fontWeight: '600', color: 'white' }}>{user?.name || 'User'}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{user?.email}</div>
+            </div>
+            <button
+              onClick={onLogout}
+              className="btn-secondary"
+              style={{ padding: '8px', borderRadius: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}
+              title="Logout"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
-          
+
           <div style={{ width: '1px', height: '24px', background: 'var(--border-glass)', margin: '0 8px' }} />
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}>
             {/* Custom Campaign Selector with delete buttons */}
             <div style={{ position: 'relative' }}>
@@ -914,8 +914,8 @@ export default function Dashboard({ user, onLogout }) {
             </button>
           </div>
         ) : (
-          <button 
-            className="btn-primary" 
+          <button
+            className="btn-primary"
             onClick={handleLaunch}
             disabled={isLaunching}
             style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px', opacity: isLaunching ? 0.7 : 1 }}
@@ -931,31 +931,31 @@ export default function Dashboard({ user, onLogout }) {
       {activeTab === 'overview' && (
         <div style={{ display: 'grid', gap: '32px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '20px' }}>
-            <StatCard 
-              icon={<Users size={20} color={stats.totalLeads > 0 ? "white" : "var(--primary)"} />} 
-              title="Total Leads" 
-              value={stats.totalLeads.toLocaleString()} 
-              sub="Verified database" 
+            <StatCard
+              icon={<Users size={20} color={stats.totalLeads > 0 ? "white" : "var(--primary)"} />}
+              title="Total Leads"
+              value={stats.totalLeads.toLocaleString()}
+              sub="Verified database"
             />
-            <StatCard 
-              icon={<Send size={20} color={campaignStatus.isRunning ? "white" : "var(--primary)"} />} 
-              title="Sent Today" 
-              value={stats.sentToday.toLocaleString()} 
-              sub={campaignStatus.isRunning ? "Active Campaign" : "Daily Volume"} 
+            <StatCard
+              icon={<Send size={20} color={campaignStatus.isRunning ? "white" : "var(--primary)"} />}
+              title="Sent Today"
+              value={stats.sentToday.toLocaleString()}
+              sub={campaignStatus.isRunning ? "Active Campaign" : "Daily Volume"}
               active={campaignStatus.isRunning}
               countdown={nextSendIn}
             />
-            <StatCard 
-              icon={<Eye size={20} color="var(--success)" />} 
-              title="Open Rate" 
-              value={`${stats.openRate}%`} 
-              sub="Direct Engagement" 
+            <StatCard
+              icon={<Eye size={20} color="var(--success)" />}
+              title="Open Rate"
+              value={`${stats.openRate}%`}
+              sub="Direct Engagement"
             />
-            <StatCard 
-              icon={<TrendingUp size={20} color="var(--secondary)" />} 
-              title="Click Rate" 
-              value={`${stats.clickRate}%`} 
-              sub="Interaction Rate" 
+            <StatCard
+              icon={<TrendingUp size={20} color="var(--secondary)" />}
+              title="Click Rate"
+              value={`${stats.clickRate}%`}
+              sub="Interaction Rate"
             />
           </div>
 
@@ -964,25 +964,25 @@ export default function Dashboard({ user, onLogout }) {
             <div className="glass-card" style={{ height: '400px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '24px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: '700' }}>Delivery Trends</h3>
-                <RefreshCw 
-                  size={16} 
-                  className={`text-muted ${isManualRefreshing ? 'spin' : ''}`} 
-                  style={{ cursor: 'pointer', transition: 'all 0.3s' }} 
-                  onClick={handleManualRefresh} 
+                <RefreshCw
+                  size={16}
+                  className={`text-muted ${isManualRefreshing ? 'spin' : ''}`}
+                  style={{ cursor: 'pointer', transition: 'all 0.3s' }}
+                  onClick={handleManualRefresh}
                 />
               </div>
               <ResponsiveContainer width="100%" height="85%">
                 <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="colorVol" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0}/>
+                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.05)" />
                   <XAxis dataKey="name" tick={{ fill: 'var(--text-dim)', fontSize: 11 }} tickLine={false} interval={3} />
                   <YAxis tick={{ fill: 'var(--text-dim)', fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ background: 'rgba(10,10,12,0.95)', border: '1px solid var(--border-glass)', borderRadius: '12px', backdropFilter: 'blur(10px)' }}
                     itemStyle={{ color: 'white' }}
                   />
@@ -1036,100 +1036,100 @@ export default function Dashboard({ user, onLogout }) {
 
       {activeTab === 'leads' && (
         <div className="glass-card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
-               <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
-                  <div style={{ position: 'relative', width: '300px' }}>
-                    <Search size={18} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-dim)' }} />
-                    <input 
-                      type="text" 
-                      placeholder="Search email..." 
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      style={{ width: '100%', padding: '12px 12px 12px 40px', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '12px', color: 'white', outline: 'none' }}
-                    />
-                  </div>
-                  
-                  <select 
-                    value={selectedCampaign}
-                    onChange={(e) => setSelectedCampaign(e.target.value)}
-                    style={{ 
-                      padding: '12px', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', 
-                      borderRadius: '12px', color: 'white', outline: 'none', minWidth: '180px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <option value="all" style={{ background: '#1e1e1e' }}>All Campaigns</option>
-                    {campaigns.map(c => (
-                      <option key={c._id} value={c.name} style={{ background: '#1e1e1e' }}>{c.name}</option>
-                    ))}
-                  </select>
-               </div>
-              <div style={{ display: 'flex', gap: '12px' }}>
-                 <button 
-                  onClick={() => setShowPasteModal(true)}
-                  style={{ padding: '12px 24px', background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-glass)', color: 'white', display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer', borderRadius: '8px' }}
-                 >
-                    <Send size={18} /> Paste Leads
-                 </button>
-                 <button 
-                  onClick={handleUploadClick}
-                  disabled={isUploading}
-                  style={{ padding: '12px 24px', background: 'var(--primary)', border: 'none', color: 'white', display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer', borderRadius: '8px' }}
-                 >
-                    {isUploading ? <Loader2 size={18} className="spin" /> : <Upload size={18} />}
-                    {isUploading ? 'Uploading...' : 'Upload CSV'}
-                 </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <div style={{ position: 'relative', width: '300px' }}>
+                <Search size={18} style={{ position: 'absolute', left: '12px', top: '12px', color: 'var(--text-dim)' }} />
+                <input
+                  type="text"
+                  placeholder="Search email..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  style={{ width: '100%', padding: '12px 12px 12px 40px', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)', borderRadius: '12px', color: 'white', outline: 'none' }}
+                />
               </div>
-           </div>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-               <thead>
-                 <tr style={{ textAlign: 'left', color: 'var(--text-dim)', fontSize: '14px', borderBottom: '1px solid var(--border-glass)' }}>
-                    <th style={{ padding: '16px' }}>Email</th>
-                    <th style={{ padding: '16px' }}>Campaign</th>
-                    <th style={{ padding: '16px' }}>Status</th>
-                    <th style={{ padding: '16px' }}>Added</th>
-                    <th style={{ padding: '16px', textAlign: 'right' }}>Actions</th>
-                 </tr>
-               </thead>
-               <tbody>
-                  {leads.length > 0 ? leads.filter(l => l.email.includes(searchQuery)).map(lead => (
-                    <LeadRow 
-                      key={lead._id} 
-                      lead={lead} 
-                      onDelete={() => handleDeleteLead(lead._id)} 
-                    />
-                  )) : (
-                    <tr>
-                      <td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>No leads found. Drop a CSV or paste a list!</td>
-                    </tr>
-                  )}
-               </tbody>
-            </table>
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', padding: '24px 0', borderTop: '1px solid var(--border-glass)', marginTop: '16px' }}>
-                <button 
-                  onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="glass-card"
-                  style={{ padding: '8px 16px', color: 'white', borderRadius: '8px', opacity: currentPage === 1 ? 0.3 : 1, cursor: currentPage === 1 ? 'default' : 'pointer' }}
-                >
-                  Previous
-                </button>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-muted)', fontSize: '14px' }}>
-                  Page {currentPage} of {totalPages} ({totalLeadsCount} total)
-                </div>
-                <button 
-                  onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="glass-card"
-                  style={{ padding: '8px 16px', color: 'white', borderRadius: '8px', opacity: currentPage === totalPages ? 0.3 : 1, cursor: currentPage === totalPages ? 'default' : 'pointer' }}
-                >
-                  Next
-                </button>
+              <select
+                value={selectedCampaign}
+                onChange={(e) => setSelectedCampaign(e.target.value)}
+                style={{
+                  padding: '12px', background: 'var(--bg-glass)', border: '1px solid var(--border-glass)',
+                  borderRadius: '12px', color: 'white', outline: 'none', minWidth: '180px',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="all" style={{ background: '#1e1e1e' }}>All Campaigns</option>
+                {campaigns.map(c => (
+                  <option key={c._id} value={c.name} style={{ background: '#1e1e1e' }}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => setShowPasteModal(true)}
+                style={{ padding: '12px 24px', background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-glass)', color: 'white', display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer', borderRadius: '8px' }}
+              >
+                <Send size={18} /> Paste Leads
+              </button>
+              <button
+                onClick={handleUploadClick}
+                disabled={isUploading}
+                style={{ padding: '12px 24px', background: 'var(--primary)', border: 'none', color: 'white', display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer', borderRadius: '8px' }}
+              >
+                {isUploading ? <Loader2 size={18} className="spin" /> : <Upload size={18} />}
+                {isUploading ? 'Uploading...' : 'Upload CSV'}
+              </button>
+            </div>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ textAlign: 'left', color: 'var(--text-dim)', fontSize: '14px', borderBottom: '1px solid var(--border-glass)' }}>
+                <th style={{ padding: '16px' }}>Email</th>
+                <th style={{ padding: '16px' }}>Campaign</th>
+                <th style={{ padding: '16px' }}>Status</th>
+                <th style={{ padding: '16px' }}>Added</th>
+                <th style={{ padding: '16px', textAlign: 'right' }}>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {leads.length > 0 ? leads.filter(l => l.email.includes(searchQuery)).map(lead => (
+                <LeadRow
+                  key={lead._id}
+                  lead={lead}
+                  onDelete={() => handleDeleteLead(lead._id)}
+                />
+              )) : (
+                <tr>
+                  <td colSpan="5" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-dim)' }}>No leads found. Drop a CSV or paste a list!</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div style={{ display: 'flex', justifyContent: 'center', gap: '8px', padding: '24px 0', borderTop: '1px solid var(--border-glass)', marginTop: '16px' }}>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="glass-card"
+                style={{ padding: '8px 16px', color: 'white', borderRadius: '8px', opacity: currentPage === 1 ? 0.3 : 1, cursor: currentPage === 1 ? 'default' : 'pointer' }}
+              >
+                Previous
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', color: 'var(--text-muted)', fontSize: '14px' }}>
+                Page {currentPage} of {totalPages} ({totalLeadsCount} total)
               </div>
-            )}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="glass-card"
+                style={{ padding: '8px 16px', color: 'white', borderRadius: '8px', opacity: currentPage === totalPages ? 0.3 : 1, cursor: currentPage === totalPages ? 'default' : 'pointer' }}
+              >
+                Next
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -1141,14 +1141,14 @@ export default function Dashboard({ user, onLogout }) {
               <p style={{ color: 'var(--text-dim)', fontSize: '14px' }}>Manage pooled components used for dynamic email generation.</p>
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
+              <button
                 onClick={() => setShowTemplateImportModal(true)}
                 style={{ padding: '12px 24px', background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-glass)', color: 'white', display: 'flex', gap: '8px', alignItems: 'center', cursor: 'pointer', borderRadius: '8px', fontWeight: 'bold' }}
               >
                 <Upload size={18} /> Bulk Import
               </button>
-              <button 
-                className="btn-primary" 
+              <button
+                className="btn-primary"
                 onClick={handleUpdateTemplate}
                 disabled={isSavingTemplate}
                 style={{ padding: '12px 24px', display: 'flex', alignItems: 'center', gap: '8px' }}
@@ -1213,7 +1213,7 @@ export default function Dashboard({ user, onLogout }) {
                   <div style={{ display: 'grid', gap: '6px' }}>
                     {items.slice(0, 3).map((item, i) => (
                       <div key={i} style={{
-                        fontSize: '12px', 
+                        fontSize: '12px',
                         color: (item.enabled !== false) ? 'var(--text-dim)' : 'rgba(255,255,255,0.2)',
                         background: 'var(--bg-glass-heavy)', padding: '8px 10px',
                         borderRadius: '6px', overflow: 'hidden',
@@ -1261,7 +1261,8 @@ export default function Dashboard({ user, onLogout }) {
                 </div>
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                   {/* Enabled toggle in modal header */}
-                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px',
+                  <label style={{
+                    display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '14px',
                     color: template.enabled?.[editSection.key] !== false ? 'var(--success)' : 'var(--text-dim)'
                   }}>
                     <input
@@ -1312,7 +1313,7 @@ export default function Dashboard({ user, onLogout }) {
                       <span style={{ color: 'var(--text-dim)', fontSize: '13px', minWidth: '24px', textAlign: 'right' }}>
                         {idx + 1}.
                       </span>
-                      <input 
+                      <input
                         type="checkbox"
                         checked={item.enabled !== false}
                         onChange={e => {
@@ -1344,7 +1345,7 @@ export default function Dashboard({ user, onLogout }) {
                       }}
                       style={{
                         flex: 1, background: 'var(--bg-glass)', border: '1px solid var(--border-glass)',
-                        borderRadius: '10px', color: (item.enabled !== false) ? 'white' : 'var(--text-dim)', 
+                        borderRadius: '10px', color: (item.enabled !== false) ? 'white' : 'var(--text-dim)',
                         padding: '12px', outline: 'none',
                         resize: 'vertical', fontFamily: 'inherit', fontSize: '14px', lineHeight: '1.6',
                         opacity: (item.enabled !== false) ? 1 : 0.6
@@ -1379,8 +1380,8 @@ export default function Dashboard({ user, onLogout }) {
         <div className="glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
             <h2 style={{ fontSize: '24px' }}>SMTP Account Pool</h2>
-            <button 
-              className="btn-primary" 
+            <button
+              className="btn-primary"
               onClick={() => setShowSmtpModal(true)}
               style={{ padding: '10px 20px', display: 'flex', alignItems: 'center', gap: '8px' }}
             >
@@ -1388,15 +1389,15 @@ export default function Dashboard({ user, onLogout }) {
             </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(350px, 1fr))', gap: '20px' }}>
-             {smtpAccounts.map(acc => (
-               <SmtpCard 
-                 key={acc._id} 
-                 acc={acc} 
-                 onToggle={() => handleSmtpToggle(acc._id, acc.enabled)}
-                 onDelete={() => handleSmtpDelete(acc._id)}
-                 onRefresh={fetchData}
-               />
-             ))}
+            {smtpAccounts.map(acc => (
+              <SmtpCard
+                key={acc._id}
+                acc={acc}
+                onToggle={() => handleSmtpToggle(acc._id, acc.enabled)}
+                onDelete={() => handleSmtpDelete(acc._id)}
+                onRefresh={fetchData}
+              />
+            ))}
           </div>
         </div>
       )}
@@ -1404,10 +1405,10 @@ export default function Dashboard({ user, onLogout }) {
       {activeTab === 'logs' && (
         <div className="glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '32px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <h2 style={{ fontSize: '24px' }}>Delivery Logs</h2>
-              <div style={{ 
-                display: 'flex', alignItems: 'center', gap: '6px', 
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
                 background: 'rgba(59, 130, 246, 0.1)', color: 'var(--primary)',
                 padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '700'
               }}>
@@ -1415,7 +1416,7 @@ export default function Dashboard({ user, onLogout }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <button 
+              <button
                 onClick={handleClearLogs}
                 style={{ background: 'transparent', border: 'none', color: '#ff4d4d', cursor: 'pointer', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }}
               >
@@ -1438,23 +1439,22 @@ export default function Dashboard({ user, onLogout }) {
                 <tr key={log._id} style={{ borderBottom: '1px solid var(--border-glass)' }}>
                   <td style={{ padding: '16px', fontSize: '14px' }}>{log.email}</td>
                   <td style={{ padding: '16px' }}>
-                    <span style={{ 
-                      padding: '4px 10px', 
-                      borderRadius: '20px', 
-                      fontSize: '11px', 
-                      background: 
+                    <span style={{
+                      padding: '4px 10px',
+                      borderRadius: '20px',
+                      fontSize: '11px',
+                      background:
                         log.status === 'clicked' ? 'rgba(59, 130, 246, 0.1)' :
-                        log.status === 'opened' ? 'rgba(16, 185, 129, 0.1)' : 
-                        'rgba(100, 116, 139, 0.1)',
-                      color: 
+                          log.status === 'opened' ? 'rgba(16, 185, 129, 0.1)' :
+                            'rgba(100, 116, 139, 0.1)',
+                      color:
                         log.status === 'clicked' ? 'var(--primary)' :
-                        log.status === 'opened' ? 'var(--success)' : 
-                        'var(--text-dim)',
-                      border: `1px solid ${
-                        log.status === 'clicked' ? 'var(--primary)' :
-                        log.status === 'opened' ? 'var(--success)' : 
-                        'var(--text-dim)'
-                      }22`,
+                          log.status === 'opened' ? 'var(--success)' :
+                            'var(--text-dim)',
+                      border: `1px solid ${log.status === 'clicked' ? 'var(--primary)' :
+                          log.status === 'opened' ? 'var(--success)' :
+                            'var(--text-dim)'
+                        }22`,
                       textTransform: 'uppercase'
                     }}>
                       {log.status}
@@ -1484,8 +1484,8 @@ export default function Dashboard({ user, onLogout }) {
             <h2 style={{ marginBottom: '24px' }}>New Campaign</h2>
             <div>
               <label style={{ display: 'block', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '8px' }}>Campaign Name</label>
-              <input 
-                type="text" 
+              <input
+                type="text"
                 value={newCampaignName}
                 onChange={(e) => setNewCampaignName(e.target.value)}
                 placeholder="e.g. Real Estate Investors"
@@ -1496,7 +1496,7 @@ export default function Dashboard({ user, onLogout }) {
             </div>
             <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
               <button className="btn-primary" onClick={handleCreateCampaign} style={{ flex: 1 }}>Create & Select</button>
-              <button 
+              <button
                 onClick={() => setShowCampaignModal(false)}
                 style={{ flex: 1, padding: '12px', background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-glass)', borderRadius: '12px', color: 'white' }}
               >
@@ -1507,9 +1507,8 @@ export default function Dashboard({ user, onLogout }) {
         </div>
       )}
       {activeTab === 'spam-test' && (
-        <SpamTestView 
-          smtpAccounts={smtpAccounts} 
-          API_BASE={API_BASE} 
+        <SpamTestView
+          smtpAccounts={smtpAccounts}
         />
       )}
     </div>
@@ -1527,7 +1526,7 @@ function SmtpCard({ acc, onToggle, onDelete, onRefresh }) {
     setChecking(true);
     setCheckResult(null);
     try {
-      const res = await axios.post(`${API_BASE}/api/smtp/${acc._id}/check-reset`);
+      const res = await api.post(`/smtp/${acc._id}/check-reset`);
       setCheckResult(res.data);
       if (res.data.reset) {
         onRefresh(); // Refresh parent to update the count shown
@@ -1565,16 +1564,16 @@ function SmtpCard({ acc, onToggle, onDelete, onRefresh }) {
           </div>
         </div>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <input 
-            type="checkbox" 
-            checked={acc.enabled} 
-            onChange={onToggle} 
-            style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }} 
+          <input
+            type="checkbox"
+            checked={acc.enabled}
+            onChange={onToggle}
+            style={{ width: '18px', height: '18px', cursor: 'pointer', accentColor: 'var(--primary)' }}
           />
           <button onClick={onDelete} style={{ background: 'transparent', border: 'none', color: '#ff4d4d', cursor: 'pointer' }}><XCircle size={18} /></button>
         </div>
       </div>
-      
+
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', marginBottom: '8px' }}>
         <span style={{ color: 'var(--text-dim)' }}>Daily Usage</span>
         <span>{acc.sent_today} / {acc.daily_limit}</span>
@@ -1674,9 +1673,9 @@ function SmtpItemCompact({ user, sends, limit = 500, status }) {
 function StatCard({ icon, title, value, sub, active = false, countdown = 0 }) {
   return (
     <div className={`glass-card stat-card-v2 ${active ? 'glow' : ''}`} style={{ border: active ? '1px solid var(--primary)' : '1px solid var(--border-glass)' }}>
-      <div style={{ 
-        width: '44px', height: '44px', 
-        background: active ? 'var(--primary)' : 'var(--bg-glass-heavy)', 
+      <div style={{
+        width: '44px', height: '44px',
+        background: active ? 'var(--primary)' : 'var(--bg-glass-heavy)',
         borderRadius: '12px', display: 'grid', placeItems: 'center', marginBottom: '16px',
         boxShadow: active ? '0 0 15px var(--primary-glow)' : 'none',
         transition: 'all 0.3s ease'
@@ -1689,8 +1688,8 @@ function StatCard({ icon, title, value, sub, active = false, countdown = 0 }) {
           Next: {countdown}s
         </div>
       ) : (
-        <div style={{ 
-          fontSize: '32px', fontWeight: '800', marginBottom: '4px', 
+        <div style={{
+          fontSize: '32px', fontWeight: '800', marginBottom: '4px',
           background: 'linear-gradient(to right, #fff, #94a3b8)',
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
         }}>{value}</div>
@@ -1709,8 +1708,8 @@ function RecentActivityItem({ log }) {
   const time = new Date(log.updatedAt || log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return (
-    <div className="activity-item" style={{ 
-      padding: '12px', background: 'var(--bg-glass-heavy)', borderRadius: '12px', 
+    <div className="activity-item" style={{
+      padding: '12px', background: 'var(--bg-glass-heavy)', borderRadius: '12px',
       border: '1px solid var(--border-glass)', display: 'flex', gap: '12px', alignItems: 'center'
     }}>
       <div style={{
@@ -1736,7 +1735,7 @@ function RecentActivityItem({ log }) {
 function SmtpItem({ user, sends, limit = 500, status }) {
   const percent = (sends / limit) * 100;
   const statusColor = status === 'limit' ? 'var(--danger)' : status === 'warning' ? 'var(--warning)' : 'var(--success)';
-  
+
   return (
     <div style={{ display: 'grid', gap: '8px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px' }}>
@@ -1759,10 +1758,10 @@ function LeadRow({ lead, onDelete }) {
       <td style={{ padding: '16px', fontSize: '15px' }}>{lead.email}</td>
       <td style={{ padding: '16px', color: 'var(--primary)', fontSize: '14px', fontWeight: '500' }}>{lead.campaign || '---'}</td>
       <td style={{ padding: '16px' }}>
-        <span style={{ 
-          padding: '4px 10px', 
-          borderRadius: '20px', 
-          fontSize: '12px', 
+        <span style={{
+          padding: '4px 10px',
+          borderRadius: '20px',
+          fontSize: '12px',
           background: lead.status === 'active' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
           color: lead.status === 'active' ? 'var(--success)' : 'var(--danger)',
           border: `1px solid ${lead.status === 'active' ? 'var(--success)' : 'var(--danger)'}44`,
@@ -1773,26 +1772,26 @@ function LeadRow({ lead, onDelete }) {
       </td>
       <td style={{ padding: '16px', color: 'var(--text-dim)', fontSize: '14px' }}>{date}</td>
       <td style={{ padding: '16px', textAlign: 'right', position: 'relative' }}>
-        <button 
+        <button
           onClick={() => setShowMenu(!showMenu)}
           style={{ background: 'transparent', color: 'var(--text-dim)', border: 'none', cursor: 'pointer' }}
         >
           <MoreVertical size={18} />
         </button>
-        
+
         {showMenu && (
-          <div 
+          <div
             className="glass-card"
-            style={{ 
+            style={{
               position: 'absolute', right: '40px', top: '10px', zIndex: 100,
               padding: '8px', minWidth: '120px', textAlign: 'left',
               display: 'grid', gap: '4px'
             }}
           >
-            <button 
+            <button
               onClick={() => { onDelete(); setShowMenu(false); }}
-              style={{ 
-                background: 'transparent', color: '#ff4d4d', padding: '8px 12px', 
+              style={{
+                background: 'transparent', color: '#ff4d4d', padding: '8px 12px',
                 borderRadius: '6px', fontSize: '13px', display: 'flex', gap: '8px', alignItems: 'center',
                 width: '100%', transition: 'background 0.2s'
               }}
@@ -1811,7 +1810,7 @@ function LeadRow({ lead, onDelete }) {
 /**
  * Spam / Deliverability Test View
  */
-function SpamTestView({ smtpAccounts, API_BASE }) {
+function SpamTestView({ smtpAccounts }) {
   const [selectedSmtps, setSelectedSmtps] = useState([]);
   const [testEmails, setTestEmails] = useState('');
   const [isTesting, setIsTesting] = useState(false);
@@ -1841,7 +1840,7 @@ function SpamTestView({ smtpAccounts, API_BASE }) {
     setTestLogs([{ type: 'info', msg: `🚀 Starting Spam Test with ${selectedSmtps.length} SMTPs and ${emails.length} recipients...` }]);
 
     try {
-      const res = await axios.post(`${API_BASE}/api/smtp/test-delivery`, {
+      const res = await api.post('/smtp/test-delivery', {
         smtpIds: selectedSmtps,
         testEmails: emails
       });
@@ -1867,7 +1866,7 @@ function SpamTestView({ smtpAccounts, API_BASE }) {
             <h2 style={{ fontSize: '20px', marginBottom: '4px' }}>1. Select SMTP Accounts</h2>
             <p style={{ color: 'var(--text-dim)', fontSize: '13px' }}>Choose accounts to test delivery from.</p>
           </div>
-          <button 
+          <button
             onClick={toggleAll}
             style={{ padding: '8px 16px', background: 'var(--bg-glass-heavy)', border: '1px solid var(--border-glass)', borderRadius: '8px', color: 'white', fontSize: '12px', cursor: 'pointer' }}
           >
@@ -1877,7 +1876,7 @@ function SpamTestView({ smtpAccounts, API_BASE }) {
 
         <div style={{ display: 'grid', gap: '8px', maxHeight: '500px', overflowY: 'auto', paddingRight: '10px' }}>
           {smtpAccounts.map(acc => (
-            <div 
+            <div
               key={acc._id}
               onClick={() => toggleSmtp(acc._id)}
               style={{
@@ -1888,7 +1887,7 @@ function SpamTestView({ smtpAccounts, API_BASE }) {
                 opacity: acc.enabled ? 1 : 0.5
               }}
             >
-              <div style={{ 
+              <div style={{
                 width: '18px', height: '18px', borderRadius: '4px', border: '1px solid var(--border-glass)',
                 display: 'grid', placeItems: 'center', background: selectedSmtps.includes(acc._id) ? 'var(--primary)' : 'transparent'
               }}>
@@ -1898,7 +1897,7 @@ function SpamTestView({ smtpAccounts, API_BASE }) {
                 <div style={{ fontSize: '14px', color: 'white', fontWeight: '500' }}>{acc.email}</div>
                 <div style={{ fontSize: '11px', color: 'var(--text-dim)' }}>{acc.sent_today} / {acc.daily_limit} used</div>
               </div>
-              <div style={{ 
+              <div style={{
                 padding: '4px 8px', borderRadius: '4px', fontSize: '10px', textTransform: 'uppercase',
                 background: acc.status === 'active' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
                 color: acc.status === 'active' ? 'var(--success)' : 'var(--danger)'
@@ -1914,7 +1913,7 @@ function SpamTestView({ smtpAccounts, API_BASE }) {
         <div className="glass-card">
           <h2 style={{ fontSize: '20px', marginBottom: '8px' }}>2. Test Recipients</h2>
           <p style={{ color: 'var(--text-dim)', fontSize: '13px', marginBottom: '16px' }}>Paste email addresses to send test mails to (one per line or comma separated).</p>
-          <textarea 
+          <textarea
             value={testEmails}
             onChange={(e) => setTestEmails(e.target.value)}
             placeholder="example1@gmail.com&#10;example2@outlook.com"
@@ -1924,7 +1923,7 @@ function SpamTestView({ smtpAccounts, API_BASE }) {
               fontSize: '14px', fontFamily: 'monospace', lineHeight: '1.5'
             }}
           />
-          <button 
+          <button
             className="btn-primary"
             onClick={handleRunTest}
             disabled={isTesting}
@@ -1940,13 +1939,13 @@ function SpamTestView({ smtpAccounts, API_BASE }) {
             <h2 style={{ fontSize: '18px' }}>Execution Progress</h2>
             {testLogs.length > 0 && <button onClick={() => setTestLogs([])} style={{ background: 'transparent', border: 'none', color: 'var(--text-dim)', cursor: 'pointer', fontSize: '12px' }}>Clear Logs</button>}
           </div>
-          <div style={{ 
+          <div style={{
             flex: 1, background: '#0a0a14', borderRadius: '12px', padding: '20px',
             fontFamily: 'monospace', fontSize: '13px', overflowY: 'auto', border: '1px solid var(--border-glass)'
           }}>
             {testLogs.length === 0 && <div style={{ color: 'var(--text-dim)', textAlign: 'center', paddingTop: '40px' }}>Ready to test. Select SMTPs and recipients above.</div>}
             {testLogs.map((log, i) => (
-              <div key={i} style={{ 
+              <div key={i} style={{
                 marginBottom: '8px', paddingBottom: '8px', borderBottom: '1px solid rgba(255,255,255,0.03)',
                 color: log.type === 'error' ? '#ff4d4d' : log.type === 'success' ? '#10b981' : '#3b82f6'
               }}>

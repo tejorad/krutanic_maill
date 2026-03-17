@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import axios from 'axios';
+import api from './api';
 import { Mail, Lock, User, ArrowRight, Loader2, AlertCircle } from 'lucide-react';
 
 const Auth = ({ onLogin }) => {
@@ -23,9 +23,9 @@ const Auth = ({ onLogin }) => {
     setError('');
 
     try {
-      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
-      const response = await axios.post(endpoint, formData);
-      
+      const endpoint = isLogin ? '/auth/login' : '/auth/register';
+      const response = await api.post(endpoint, formData);
+
       if (response.data.success) {
         const { user, token } = response.data.data;
         localStorage.setItem('token', token);
@@ -296,7 +296,7 @@ const Auth = ({ onLogin }) => {
             </button>
           </div>
         </div>
-        
+
         <p style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: '12px', marginTop: '32px' }}>
           &copy; 2026 Krutanic Mail. All rights reserved.
         </p>
