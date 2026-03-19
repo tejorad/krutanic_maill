@@ -40,6 +40,13 @@ const smtpAccountSchema = new mongoose.Schema({
   }
 }, { timestamps: true });
 
+smtpAccountSchema.set('toJSON', {
+  transform: (doc, ret) => {
+    delete ret.app_password;
+    return ret;
+  }
+});
+
 smtpAccountSchema.index({ email: 1, userId: 1 }, { unique: true });
 
 module.exports = mongoose.model('SmtpAccount', smtpAccountSchema);

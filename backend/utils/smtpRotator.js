@@ -1,6 +1,7 @@
 const nodemailer = require('nodemailer');
 const SmtpAccount = require('../models/SmtpAccount');
 const logger = require('./logger');
+const { decrypt } = require('./cryptoUtils');
 
 let pool = [];
 // We'll use a Map to track cursors per user
@@ -39,7 +40,7 @@ async function refreshPool() {
         secure: false,
         auth: {
           user: acc.email,
-          pass: acc.app_password,
+          pass: decrypt(acc.app_password),
         },
         tls: {
           rejectUnauthorized: process.env.NODE_ENV === 'production',

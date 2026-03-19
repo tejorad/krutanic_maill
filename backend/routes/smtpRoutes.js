@@ -5,6 +5,7 @@ const router = express.Router();
 const SmtpAccount = require('../models/SmtpAccount');
 const smtpRotator = require('../utils/smtpRotator');
 const logger = require('../utils/logger');
+const { encrypt } = require('../utils/cryptoUtils');
 
 /**
  * GET /api/smtp
@@ -36,9 +37,13 @@ router.get('/status', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const { email, app_password, daily_limit } = req.body;
+    
+    // Encrypt the password before storing it
+    const encryptedPassword = encrypt(app_password);
+
     const account = await SmtpAccount.create({ 
       email, 
-      app_password, 
+      app_password: encryptedPassword, 
       daily_limit: daily_limit || 500,
       userId: req.user.id
     });
@@ -61,9 +66,16 @@ router.post('/', async (req, res) => {
  */
 router.patch('/:id', async (req, res) => {
   try {
+    const updateData = { ...req.body };
+    
+    // If password is being updated, encrypt it
+    if (updateData.app_password) {
+      updateData.app_password = encrypt(updateData.app_password);
+    }
+
     const account = await SmtpAccount.findOneAndUpdate(
       { _id: req.params.id, userId: req.user.id },
-      { $set: req.body }, 
+      { $set: updateData }, 
       { new: true }
     );
     if (!account) return res.status(404).json({ success: false, error: 'Account not found' });
