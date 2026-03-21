@@ -246,11 +246,10 @@ export default function Dashboard({ user, onLogout }) {
     return () => clearInterval(interval);
   }, [campaignStatus?.isRunning]);
 
-  // Perform an initial check of campaign status on load
   useEffect(() => {
     const pollStatus = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/api/leads/campaign-status`);
+        const res = await api.get('/leads/campaign-status');
         if (res.data?.success) setCampaignStatus(res.data.data);
       } catch (_) { }
     };
